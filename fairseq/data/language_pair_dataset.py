@@ -22,20 +22,30 @@ def collate(
     input_feeding=True,
     pad_to_length=None,
     pad_to_multiple=1,
+    pad_dict={},
 ):
     if len(samples) == 0:
         return {}
 
-    def merge(key, left_pad, move_eos_to_beginning=False, pad_to_length=None):
-        return data_utils.collate_tokens(
-            [s[key] for s in samples],
-            pad_idx,
-            eos_idx,
-            left_pad,
-            move_eos_to_beginning,
-            pad_to_length=pad_to_length,
-            pad_to_multiple=pad_to_multiple,
-        )
+    # def merge(key, left_pad, cur_pad_idx=pad_idx, move_eos_to_beginning=False, pad_to_length=None):
+    #     return data_utils.collate_tokens(
+    #         [s[key] for s in samples],
+    #         cur_pad_idx,
+    #         eos_idx,
+    #         left_pad,
+    #         move_eos_to_beginning,
+    #         pad_to_length=pad_to_length,
+    #         pad_to_multiple=pad_to_multiple,
+    #     )
+    def merge(key, left_pad, cur_pad_idx=pad_idx, move_eos_to_beginning=False, pad_to_length=None, bert_input=False):
+        # check whether current key values contains none.
+        key_samples = [s[key] for s in samples]
+        check = all(item != None for item in key_samples)
+        if check is True:
+            return data_utils.collate_tokens(
+                key_samples,
+                cur_pad_idx, eos_idx, left_pad, move_eos_to_beginning, pad_to_length=pad_to_length
+            )
 
     def check_alignment(alignment, src_len, tgt_len):
         if alignment is None or len(alignment) == 0:
@@ -63,7 +73,7 @@ def collate(
         )
         align_weights = align_tgt_c[align_tgt_i[np.arange(len(align_tgt))]]
         return 1.0 / align_weights.float()
-
+    #import pdb; pdb.set_trace()
     id = torch.LongTensor([s["id"] for s in samples])
     src_tokens = merge(
         "source",
@@ -77,6 +87,23 @@ def collate(
     src_lengths, sort_order = src_lengths.sort(descending=True)
     id = id.index_select(0, sort_order)
     src_tokens = src_tokens.index_select(0, sort_order)
+
+    task_batch = {}
+    # process tasks
+    for key in samples[0].keys():
+        splits = key.split('-')
+        # no "-"
+        if len(splits) == 1:
+            continue
+        task = splits[0]
+        if key.endswith('labels'):
+            cur_pad_idx = -1
+        else:
+            cur_pad_idx = pad_dict[task]
+        cur_tensor = merge(key, left_pad=left_pad_source, cur_pad_idx=cur_pad_idx)
+        task_batch[key] = cur_tensor.index_select(0, sort_order)
+
+
 
     prev_output_tokens = None
     target = None
@@ -114,13 +141,28 @@ def collate(
         "id": id,
         "nsentences": len(samples),
         "ntokens": ntokens,
-        "net_input": {"src_tokens": src_tokens, "src_lengths": src_lengths,},
+        "net_input": {
+            "src_tokens": src_tokens,
+            "src_lengths": src_lengths,
+            'bert_input': task_batch['BERT-bert-output'],
+        },
         "target": target,
     }
+
+    for key in task_batch:
+        key_under = key.replace('-', '_')
+        batch['net_input'][key_under] = task_batch[key]
+
     if prev_output_tokens is not None:
         batch["net_input"]["prev_output_tokens"] = prev_output_tokens.index_select(
             0, sort_order
         )
+
+    if samples[0].get('extra', None) is not None:
+        extra_tokens = merge('extra', left_pad=left_pad_source)
+        extra_tokens = extra_tokens.index_select(0, sort_order)
+        if extra_tokens is not None:
+            batch['net_input']['extra_item'] = extra_tokens
 
     if samples[0].get("alignment", None) is not None:
         bsz, tgt_sz = batch["target"].shape
@@ -209,6 +251,11 @@ class LanguagePairDataset(FairseqDataset):
         tgt=None,
         tgt_sizes=None,
         tgt_dict=None,
+        masking=False,
+        src_bert_dataset=None,
+        denoising=False,
+        src_bart_dataset=None,
+        extra_datasets=None,
         left_pad_source=True,
         left_pad_target=False,
         shuffle=True,
@@ -228,10 +275,12 @@ class LanguagePairDataset(FairseqDataset):
             assert src_dict.pad() == tgt_dict.pad()
             assert src_dict.eos() == tgt_dict.eos()
             assert src_dict.unk() == tgt_dict.unk()
+        #import pdb; pdb.set_trace()
         if tgt is not None:
             assert len(src) == len(
                 tgt
             ), "Source and target must contain the same number of examples"
+        assert not (denoising is True and src_bart_dataset == None is True)
         self.src = src
         self.tgt = tgt
         self.src_sizes = np.array(src_sizes)
@@ -294,6 +343,13 @@ class LanguagePairDataset(FairseqDataset):
         else:
             self.buckets = None
         self.pad_to_multiple = pad_to_multiple
+        self.extra_data = extra_datasets
+
+        if hasattr(self.src, "pad_dict"):
+            self.pad_dict = self.src.pad_dict
+        else:
+            self.pad_dict = {}
+
 
     def get_batch_shapes(self):
         return self.buckets
@@ -301,6 +357,11 @@ class LanguagePairDataset(FairseqDataset):
     def __getitem__(self, index):
         tgt_item = self.tgt[index] if self.tgt is not None else None
         src_item = self.src[index]
+        if isinstance(src_item, dict) is True:
+            example = src_item
+            src_item = example['source']
+        else:
+            example = {}
         # Append EOS to end of tgt sentence if it does not have an EOS and remove
         # EOS from end of src sentence if it exists. This is useful when we use
         # use existing datasets for opposite directions i.e., when we want to
@@ -319,16 +380,20 @@ class LanguagePairDataset(FairseqDataset):
             if self.src[index][0] != bos:
                 src_item = torch.cat([torch.LongTensor([bos]), self.src[index]])
 
+        if self.extra_data:
+            extra_item = self.extra_data[index] if index <= len(self.extra_data) else None
+        else:
+            extra_item = None
+
         if self.remove_eos_from_source:
             eos = self.src_dict.eos()
             if self.src[index][-1] == eos:
                 src_item = self.src[index][:-1]
 
-        example = {
-            "id": index,
-            "source": src_item,
-            "target": tgt_item,
-        }
+        example['source'] = src_item
+        example['target'] = tgt_item
+        example['extra'] = extra_item
+
         if self.align_dataset is not None:
             example["alignment"] = self.align_dataset[index]
         if self.constraints is not None:
@@ -383,6 +448,7 @@ class LanguagePairDataset(FairseqDataset):
             input_feeding=self.input_feeding,
             pad_to_length=pad_to_length,
             pad_to_multiple=self.pad_to_multiple,
+            pad_dict=self.pad_dict,
         )
         if self.src_lang_id is not None or self.tgt_lang_id is not None:
             src_tokens = res["net_input"]["src_tokens"]
@@ -400,10 +466,14 @@ class LanguagePairDataset(FairseqDataset):
     def num_tokens(self, index):
         """Return the number of tokens in a sample. This value is used to
         enforce ``--max-tokens`` during batching."""
-        return max(
-            self.src_sizes[index],
-            self.tgt_sizes[index] if self.tgt_sizes is not None else 0,
-        )
+        # return max(self.src_sizes[index], self.tgt_sizes[index] if self.tgt_sizes is not None else 0)
+        a = max(self.src_sizes[index], self.tgt_sizes[index] if self.tgt_sizes is not None else 0)
+        # TODO: add bart
+        if self.srcbert_sizes:
+            a = max(a, self.srcbert_sizes[index])
+        if self.srcbart_sizes:
+            a = max(a, self.srcbart_sizes[index])
+        return a
 
     def num_tokens_vec(self, indices):
         """Return the number of tokens for a set of positions defined by indices.
@@ -450,6 +520,8 @@ class LanguagePairDataset(FairseqDataset):
         self.src.prefetch(indices)
         if self.tgt is not None:
             self.tgt.prefetch(indices)
+        if self.extra_data is not None:
+            self.extra_data.prefetch(indices)
         if self.align_dataset is not None:
             self.align_dataset.prefetch(indices)
 

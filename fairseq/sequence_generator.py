@@ -36,6 +36,7 @@ class SequenceGenerator(nn.Module):
         symbols_to_strip_from_output=None,
         lm_model=None,
         lm_weight=1.0,
+        args=None,
     ):
         """Generates translations of a given source sentence.
 
@@ -89,6 +90,11 @@ class SequenceGenerator(nn.Module):
         self.unk_penalty = unk_penalty
         self.temperature = temperature
         self.match_source_len = match_source_len
+
+        self.use_bertinput = args.use_bertinput
+        self.mask_lm = args.mask_lm
+        self.bert_ner = args.bert_ner
+        self.bert_sst = args.bert_sst
 
         if no_repeat_ngram_size > 0:
             self.repeat_ngram_blocker = NGramRepeatBlock(no_repeat_ngram_size)
@@ -151,8 +157,53 @@ class SequenceGenerator(nn.Module):
             # model.forward normally channels prev_output_tokens into the decoder
             # separately, but SequenceGenerator directly calls model.encoder
             encoder_input = {
-                k: v for k, v in input.items() if k != "prev_output_tokens"
+                k: v for k, v in input.items() if k != "prev_output_tokens" and k != 'bert_input'
             }
+
+            # bertinput = sample['net_input']['bert_input']
+            # # gpt2_input = sample['net_input']['gpt2_input']
+            # bert_encoder_padding_mask = bertinput.eq(self.model.models[0].berttokenizer.pad())
+            # if self.model.models[0].bert_encoder is None:
+            #     if hasattr(self.model.models[0], 'bert_ner_model'):
+            #         bert_outs = self.model.models[0].bert_ner_model.bert(bertinput, output_hidden_states=True,
+            #                                                              attention_mask=~bert_encoder_padding_mask)
+            #         bert_outs = bert_outs[0]
+            #     elif hasattr(self.model.models[0], 'bert_sst_model'):
+            #         bert_outs = self.model.models[0].bert_sst_model.bert(bertinput, output_hidden_states=True,
+            #                                                              attention_mask=~bert_encoder_padding_mask)
+            #         bert_outs = bert_outs[0]
+            #     else:
+            #         bert_outs = self.model.models[0].bertmasklm.bert(bertinput, output_all_encoded_layers=True,
+            #                                                          attention_mask=~bert_encoder_padding_mask)
+            #         bert_outs = bert_outs[self.bert_output_layer][0]
+            #         # import pdb; pdb.set_trace()
+            #
+            # else:
+            #     bert_outs, _ = self.model.models[0].bert_encoder(bertinput, output_all_encoded_layers=True,
+            #                                                      attention_mask=~bert_encoder_padding_mask)
+            #     bert_outs = bert_outs[self.bert_output_layer]
+            #
+            # if self.model.models[0].mask_cls_sep:
+            #     bert_encoder_padding_mask += bertinput.eq(self.model.models[0].berttokenizer.cls())
+            #     bert_encoder_padding_mask += bertinput.eq(self.model.models[0].berttokenizer.sep())
+            # bert_outs = bert_outs.permute(1, 0, 2).contiguous()
+            # # bert_outs = F.linear(bert_outs, model.models[0].trans_weight, model.models[0].trans_bias)
+            # bert_outs = [{
+            #     'bert_encoder_out': bert_outs,
+            #     'bert_encoder_padding_mask': bert_encoder_padding_mask,
+            # }]
+            # if self.model.models[0].__class__.__name__ == 'TransformerS2Model':
+            #     encoder_input['bert_encoder_out'] = bert_outs[0]
+            # if self.use_bertinput:
+            #     encoder_input['src_tokens'] = bertinput
+            # encoder_outs = self.model.forward_encoder(encoder_input)
+            # new_order = torch.arange(encoder_input['src_tokens'].size()[0]).view(-1, 1).repeat(1, beam_size).view(-1)
+            # new_order = new_order.to(encoder_input['src_tokens'].device).long()
+            # bert_outs = [{
+            #     'bert_encoder_out': encoder_outs[0]['encoder_out'],
+            #     'bert_encoder_padding_mask': encoder_outs[0]['encoder_padding_mask'],
+            # }]
+
             if timer is not None:
                 timer.start()
             with torch.no_grad():

@@ -10,7 +10,8 @@ import torch
 from fairseq.file_io import PathManager
 from fairseq.tokenizer import tokenize_line
 from typing import List, Dict
-
+from bert import BertTokenizer
+from transformers.models.bart import BartTokenizer
 
 def safe_readline(f):
     pos = f.tell()
@@ -34,12 +35,17 @@ class Binarizer:
         offset=0,
         end=-1,
         already_numberized=False,
+        avoid_tokenize=False,
     ) -> Dict[str, int]:
         nseq, ntok = 0, 0
         replaced = Counter()
 
         def replaced_consumer(word, idx):
             if idx == dict.unk_index and word != dict.unk_word:
+                replaced.update([word])
+
+        def replaced_consumer_from_pretrained(word, idx):
+            if idx == dict.convert_tokens_to_ids(dict.unk_token) and word != dict.unk_token:
                 replaced.update([word])
 
         with open(PathManager.get_local_path(filename), "r", encoding="utf-8") as f:
@@ -63,6 +69,49 @@ class Binarizer:
                     if append_eos:
                         id_list.append(dict.eos())
                     ids = torch.IntTensor(id_list)
+                elif isinstance(dict, BertTokenizer):
+                    line = line.strip()
+                    line = '{} {} {}'.format('[CLS]', line, '[SEP]')
+                    if avoid_tokenize is False:
+                        tokenizedline = dict.tokenize(line)
+                    else:
+                        tokenizedline = line.strip().split()
+                    # max-len:1000000000000
+                    # print('----------bert_max-len:' + str(dict.max_len) + '----------')
+                    if len(tokenizedline) > dict.max_len:
+                        tokenizedline = tokenizedline[:dict.max_len - 1]
+                        tokenizedline.append('[SEP]')
+                    words = dict.convert_tokens_to_ids(tokenizedline)
+                    nwords = len(words)
+                    ids = torch.IntTensor(nwords)
+                    for i, word in enumerate(words):
+                        ids[i] = word
+                        replaced_consumer(tokenizedline[i], word)
+                elif isinstance(dict, BartTokenizer):
+                    line = line.strip()
+                    if avoid_tokenize is False:
+                        # extra space at the end will cause weird outputs.
+                        line = '{} {}{}'.format('<s>', line, '</s>')
+                        tokenizedline = dict.tokenize(line)
+                    else:
+                        line = '{} {} {}'.format('<s>', line, '</s>')
+                        tokenizedline = line.strip().split()
+                    # tokenizedline = dict.tokenize(line)
+                    words = dict.convert_tokens_to_ids(tokenizedline)
+                    assert len(tokenizedline) == len(words)
+                    nwords = len(words)
+                    ids = torch.IntTensor(nwords)
+                    for i, word in enumerate(words):
+                        ids[i] = word
+                        replaced_consumer_from_pretrained(tokenizedline[i], word)
+                elif dict is None:
+                    line = line.strip()
+                    words = line.split()
+                    words = [int(item) for item in words]
+                    nwords = len(words)
+                    ids = torch.IntTensor(nwords)
+                    for i, word in enumerate(words):
+                        ids[i] = word
                 else:
                     ids = dict.encode_line(
                         line=line,

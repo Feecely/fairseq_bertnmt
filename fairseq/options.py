@@ -286,6 +286,18 @@ def add_preprocess_args(parser):
                        help="Pad dictionary size to be multiple of N")
     group.add_argument("--workers", metavar="N", default=1, type=int,
                        help="number of parallel workers")
+    #--mult-teachers --avoid-tokenize-extras --input-mapping
+    # --bert-model-name /mnt/yardcephfs/mmyard/g_wxg_td_prc/mt/v_xyvhuang/data/bert-base-cased-new
+    # --bart-model-name /mnt/yardcephfs/mmyard/g_wxg_td_prc/mt/v_xyvhuang/data/bart-base
+    #parser.add_argument('--avoid-tokenize-extras', action='store_true', help='...')
+    group.add_argument("--mult-teachers", action="store_true",
+                       help="...")
+    group.add_argument("--avoid-tokenize-extras", action="store_true",
+                       help="...")
+    group.add_argument("--input-mapping", action="store_true",
+                       help="...")
+    group.add_argument('--bert-model-name', default='bert-base-uncased', type=str)
+    group.add_argument('--bart-model-name', default='bart-base-uncased', type=str)
     # fmt: on
     return parser
 

@@ -31,7 +31,10 @@ from fairseq.modules import (
 from fairseq.modules.checkpoint_activations import checkpoint_wrapper
 from fairseq.modules.quant_noise import quant_noise as apply_quant_noise_
 from torch import Tensor
-
+from bert import BertModel, BertTokenizer, BertForMaskedLM
+from transformers import AutoModelForTokenClassification, AutoModelForSequenceClassification, AutoModel
+from transformers import AutoTokenizer, AutoModelWithLMHead
+from transformers import BartForConditionalGeneration, BartTokenizer
 
 DEFAULT_MAX_SOURCE_POSITIONS = 1024
 DEFAULT_MAX_TARGET_POSITIONS = 1024
@@ -110,7 +113,65 @@ class TransformerModel(FairseqEncoderDecoderModel):
         super().__init__(encoder, decoder)
         self.args = args
         self.supports_align_args = True
+        self.mask_cls_sep = getattr(args, 'mask_cls_sep', False)
+        self.berttokenizer = BertTokenizer.from_pretrained(args.bert_model_name, do_lower_case=False)
+        self.use_bertinput = getattr(args, 'use_bertinput', False)
+        self.mask_lm = getattr(args, 'mask_lm', False)
+        self.extra_data = getattr(args, 'extra_data', False)
+        self.text_filling = getattr(args, 'text_filling', False)
+        self.bert_ner = getattr(args, 'bert_ner', False)
+        self.bert_sst = getattr(args, 'bert_sst', False)
 
+
+
+
+        if self.mask_lm is True:
+            model_name = args.bert_model_name
+            #import pdb; pdb.set_trace()
+            self.bertmasklm = BertForMaskedLM.from_pretrained(model_name)  # bertmasklm.cls.predictions.decoder
+            #args.bert_out_dim = self.bertmasklm.bert.hidden_size
+
+            self.mask_fc1 = self.bertmasklm.cls
+            self.mask_fc1.requires_grad = False
+            self.mask_fc2 = nn.Linear(768, len(self.berttokenizer.vocab))
+            #self.mask_fc2 = nn.Linear(768, len(self.encoder.dictionary))
+            self.loss_fct = nn.CrossEntropyLoss(ignore_index=0, reduction='sum')
+
+        if self.text_filling is True:
+            model_name = args.bart_model_name
+            self.bart_tokenizer = BartTokenizer.from_pretrained(model_name)
+            self.bartmasklm = BartForConditionalGeneration.from_pretrained(model_name)
+
+            # self.bart_mask_fc1 = self.bartmasklm.cls
+            # self.bart_mask_fc1.requires_grad = False
+            self.bart_mask_fc2 = nn.Linear(768, self.bart_tokenizer.vocab_size)
+            #self.bart_mask_fc2 = nn.Linear(768, len(self.encoder.dictionary))
+            self.bart_loss_fct = nn.CrossEntropyLoss(ignore_index=-1, reduction='sum')
+
+        if self.bert_ner is True:
+            # TODO: check whether this will work.
+            model_name = args.bert_model_name[:-3] + 'ner'
+            self.bert_ner_model = AutoModelForTokenClassification.from_pretrained(model_name)
+            self.ner_fc = self.bert_ner_model.classifier
+            self.ner_fc.requires_grad = False
+            #import pdb; pdb.set_trace()
+            self.encoder_dropout = nn.Dropout(self.bert_ner_model.config.hidden_dropout_prob)
+            self.encoder_classifier = nn.Linear(self.bert_ner_model.config.hidden_size, self.bert_ner_model.config.num_labels)
+
+        if self.bert_sst is True:
+            model_name = args.bert_model_name[:-3] + 'sst'
+            self.bert_sst_model = AutoModelForSequenceClassification.from_pretrained(model_name)
+            self.sst_fc = self.bert_sst_model.classifier
+            self.sst_fc.requires_grad = False
+            self.encoder_dropout = nn.Dropout(self.bert_sst_model.config.hidden_dropout_prob)
+            self.encoder_classifier = nn.Linear(self.bert_sst_model.config.hidden_size,
+                                                self.bert_sst_model.config.num_labels)
+            self.dense = nn.Linear(self.bert_sst_model.config.hidden_size, self.bert_sst_model.config.hidden_size)
+            self.activation = nn.Tanh()
+        # self.use_bertinput = getattr(args, 'mask_lm', False)
+        # self.mask_lm = getattr(args, 'mask_lm', False)
+        # self.bert_ner = getattr(args, 'bert_ner', False)
+        # self.bert_sst = getattr(args, 'bert_sst', False)
     @staticmethod
     def add_args(parser):
         """Add model-specific arguments to the parser."""
@@ -209,6 +270,19 @@ class TransformerModel(FairseqEncoderDecoderModel):
                 '--offload-activations are passed.'
             )
         )
+        #parser.add_argument('--finetune-bert', action='store_true', help='...')
+        parser.add_argument('--use-bertinput', action='store_true', help='...')
+        parser.add_argument('--mask-lm', action='store_true', help='...')
+        parser.add_argument('--bert-ner', action='store_true', help='...')
+        parser.add_argument('--bert-sst', action='store_true', help='...')
+
+        parser.add_argument('--kd-alpha', default=0.9, type=float)
+        parser.add_argument('--extra-data', action='store_true', help='...')
+        parser.add_argument('--denoising', action='store_true', help='...')
+        parser.add_argument('--masking', action='store_true', help='...')
+        parser.add_argument('--bert-model-name', default='bert-base-uncased', type=str)
+        parser.add_argument('--bart-model-name', default='bart-base-uncased', type=str)
+        parser.add_argument('--text-filling', action='store_true', help='...')
         # fmt: on
 
     @classmethod
@@ -230,6 +304,12 @@ class TransformerModel(FairseqEncoderDecoderModel):
 
         src_dict, tgt_dict = task.source_dictionary, task.target_dictionary
 
+        if len(task.datasets) > 0:
+            src_berttokenizer = next(iter(task.datasets.values())).berttokenizer
+        else:
+            src_berttokenizer = BertTokenizer.from_pretrained(args.bert_model_name, do_lower_case=False)
+
+
         if args.share_all_embeddings:
             if src_dict != tgt_dict:
                 raise ValueError("--share-all-embeddings requires a joined dictionary")
@@ -249,6 +329,8 @@ class TransformerModel(FairseqEncoderDecoderModel):
             decoder_embed_tokens = encoder_embed_tokens
             args.share_decoder_input_output_embed = True
         else:
+            if args.use_bertinput:
+                src_dict = src_berttokenizer
             encoder_embed_tokens = cls.build_embedding(
                 args, src_dict, args.encoder_embed_dim, args.encoder_embed_path
             )
@@ -300,6 +382,18 @@ class TransformerModel(FairseqEncoderDecoderModel):
         src_tokens,
         src_lengths,
         prev_output_tokens,
+        bert_input=None,
+        BERT_encoder_input=None,
+        BERT_encoder_output=None,
+        BART_encoder_input=None,
+        BART_encoder_output=None,
+        BERT_bert_input=None,
+        BERT_bert_output=None,
+        BART_bart_input=None,
+        BART_bart_output=None,
+        BERT_bert_labels=None,
+        BERT_encoder_mapping=None,
+        BART_encoder_mapping=None,
         return_all_hiddens: bool = True,
         features_only: bool = False,
         alignment_layer: Optional[int] = None,
@@ -311,9 +405,70 @@ class TransformerModel(FairseqEncoderDecoderModel):
         Copied from the base class, but without ``**kwargs``,
         which are not supported by TorchScript.
         """
-        encoder_out = self.encoder(
-            src_tokens, src_lengths=src_lengths, return_all_hiddens=return_all_hiddens
-        )
+        bert_encoder_padding_mask = bert_input.eq(self.berttokenizer.pad())
+        if self.mask_cls_sep:
+            bert_encoder_padding_mask += bert_input.eq(self.berttokenizer.cls())
+            bert_encoder_padding_mask += bert_input.eq(self.berttokenizer.sep())
+        if self.use_bertinput:
+            bert_src_lengths = (bert_input != self.berttokenizer.pad()).sum(-1)
+            encoder_out = self.encoder(bert_input, src_lengths=bert_src_lengths)
+        else:
+            encoder_out = self.encoder(
+                src_tokens, src_lengths=src_lengths, return_all_hiddens=return_all_hiddens
+            )
+        if self.mask_lm:
+            if BERT_encoder_input is None or BERT_encoder_output is None:
+                BERT_encoder_input, BERT_encoder_output = BERT_bert_input, BERT_encoder_output
+            mask_src_lengths = (BERT_encoder_input != self.encoder.dictionary.pad_index).sum(-1)
+            mask_encoder_out = self.encoder(BERT_encoder_input, mask_src_lengths)
+            mask_encoder_out = mask_encoder_out['encoder_out'][-1].permute(1, 0, 2).contiguous()
+            mask_encoder_out = self.mask_fc2(mask_encoder_out)
+
+            BERT_encoder_label = (BERT_encoder_input != BERT_encoder_output).int()
+            BERT_encoder_label = torch.mul(BERT_encoder_label, BERT_encoder_output)
+            masked_encoder_loss = self.loss_fct(mask_encoder_out.view(-1, len(self.berttokenizer.vocab)),
+                                                BERT_encoder_label.view(-1))
+            with torch.no_grad():
+                mask_bert_loss, mask_bert_out = self.bertmasklm(BERT_bert_input, attention_mask=~bert_encoder_padding_mask, masked_lm_labels=BERT_bert_labels)
+            mask_loss = masked_encoder_loss + mask_bert_loss
+
+        if self.bert_ner:
+            with torch.no_grad():
+                ner_bert_out = self.bert_ner_model(bert_input)
+            encoder_ner_out = self.encoder(bert_input, src_lengths=bert_src_lengths)
+            encoder_ner_out = encoder_ner_out['encoder_out'][-1].permute(1, 0, 2).contiguous()
+            encoder_ner_out = self.encoder_dropout(encoder_ner_out)
+            ner_encoder_out = self.encoder_classifier(encoder_ner_out)
+
+        if self.bert_sst:
+            with torch.no_grad():
+                sst_bert_out = self.bert_sst_model(bert_input)
+            encoder_sst_out = self.encoder(bert_input, src_lengths=bert_src_lengths)
+            encoder_sst_out = encoder_sst_out['encoder_out'][-1].permute(1, 0, 2).contiguous()
+            first_token_tensor = encoder_sst_out[:, 0]
+            pooled_output = self.dense(first_token_tensor)
+            pooled_output = self.activation(pooled_output)
+            sst_encoder_out = self.encoder_dropout(pooled_output)
+            sst_encoder_out = self.encoder_classifier(sst_encoder_out)
+
+        if self.text_filling is True:
+            bart_encoder_padding_mask = BART_bart_input.eq(
+                self.bart_tokenizer.convert_tokens_to_ids(self.bart_tokenizer.pad_token))
+            #import pdb; pdb.set_trace()
+            fill_src_lengths = (BART_encoder_input != self.encoder.dictionary.pad_index).sum(-1)
+            fill_encoder_out = self.encoder(BART_encoder_input, fill_src_lengths)
+            fill_encoder_out = fill_encoder_out['encoder_out'][-1].permute(1, 0, 2).contiguous()
+            fill_encoder_out = self.bart_mask_fc2(fill_encoder_out)
+            fill_encoder_loss = self.bart_loss_fct(fill_encoder_out.view(-1, self.bart_tokenizer.vocab_size),
+                                                   BART_encoder_output.view(-1))
+
+            with torch.no_grad():
+                fill_bart_out = self.bartmasklm(BART_bart_input, attention_mask=~bart_encoder_padding_mask)[0]
+                fill_bart_loss = self.bart_loss_fct(fill_bart_out.view(-1, self.bart_tokenizer.vocab_size),
+                                                    BART_bart_output.view(-1))
+            fill_loss = fill_encoder_loss + fill_bart_loss
+
+
         decoder_out = self.decoder(
             prev_output_tokens,
             encoder_out=encoder_out,
@@ -323,7 +478,29 @@ class TransformerModel(FairseqEncoderDecoderModel):
             src_lengths=src_lengths,
             return_all_hiddens=return_all_hiddens,
         )
-        return decoder_out
+
+        ret = {}
+        if self.mask_lm:
+            ret['mask_bert_out'] = mask_bert_out
+            ret['mask_encoder_out'] = mask_encoder_out
+            ret['mask_loss'] = mask_loss
+            ret['BERT_encoder_mapping'] = BERT_encoder_mapping
+
+        if self.text_filling:
+            ret['fill_bart_out'] = fill_bart_out
+            ret['fill_encoder_out'] = fill_encoder_out
+            ret['fill_loss'] = fill_loss
+            ret['BART_encoder_mapping'] = BART_encoder_mapping
+
+        if self.bert_ner:
+            ret['ner_bert_out'] = ner_bert_out
+            ret['ner_encoder_out'] = ner_encoder_out
+
+        if self.bert_sst:
+            ret['sst_bert_out'] = sst_bert_out
+            ret['sst_encoder_out'] = sst_encoder_out
+
+        return decoder_out, ret
 
     # Since get_normalized_probs is in the Fairseq Model which is not scriptable,
     # I rewrite the get_normalized_probs from Base Class to call the
@@ -1147,6 +1324,29 @@ def transformer_iwslt_de_en(args):
 def transformer_wmt_en_de(args):
     base_architecture(args)
 
+@register_model_architecture("transformer", "transformer_wmt_en_de_768")
+def transformer_wmt_en_de(args):
+    args.encoder_embed_dim = getattr(args, "encoder_embed_dim", 768)
+    args.encoder_ffn_embed_dim = getattr(args, "encoder_ffn_embed_dim", 3072)
+    args.encoder_attention_heads = getattr(args, "encoder_attention_heads", 8)
+    args.encoder_normalize_before = getattr(args, "encoder_normalize_before", False)
+    args.decoder_embed_dim = getattr(args, "decoder_embed_dim", 768)
+    args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", 3072)
+    args.decoder_attention_heads = getattr(args, "decoder_attention_heads", 8)
+    #args.dropout = getattr(args, "dropout", 0.3)
+    base_architecture(args)
+
+@register_model_architecture("transformer", "transformer_wmt_en_de_1024")
+def transformer_wmt_en_de(args):
+    args.encoder_embed_dim = getattr(args, "encoder_embed_dim", 1024)
+    args.encoder_ffn_embed_dim = getattr(args, "encoder_ffn_embed_dim", 4096)
+    args.encoder_attention_heads = getattr(args, "encoder_attention_heads", 8)
+    args.encoder_normalize_before = getattr(args, "encoder_normalize_before", False)
+    args.decoder_embed_dim = getattr(args, "decoder_embed_dim", 1024)
+    args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", 4096)
+    args.decoder_attention_heads = getattr(args, "decoder_attention_heads", 8)
+    #args.dropout = getattr(args, "dropout", 0.3)
+    base_architecture(args)
 
 # parameters used in the "Attention Is All You Need" paper (Vaswani et al., 2017)
 @register_model_architecture("transformer", "transformer_vaswani_wmt_en_de_big")

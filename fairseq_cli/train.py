@@ -93,6 +93,15 @@ def main(cfg: FairseqConfig) -> None:
             model = fsdp_wrap(task.build_model(cfg.model))
     else:
         model = task.build_model(cfg.model)
+
+    print('------------------------------')
+    if not cfg.task.finetune_bert:
+        ignore_params = ['bert_encoder','bertmasklm', 'bert_ner_model', 'bert_sst_model', 'gpt2_model', 'bartmasklm']
+        for key in ignore_params:
+            parm_group = getattr(model, key, None)
+            if parm_group is not None:
+                for param in parm_group.parameters():
+                    param.requires_grad = False
     criterion = task.build_criterion(cfg.criterion)
     logger.info(model)
     logger.info("task: {}".format(task.__class__.__name__))
