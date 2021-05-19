@@ -122,9 +122,6 @@ class TransformerModel(FairseqEncoderDecoderModel):
         self.bert_ner = getattr(args, 'bert_ner', False)
         self.bert_sst = getattr(args, 'bert_sst', False)
 
-
-
-
         if self.mask_lm is True:
             model_name = args.bert_model_name
             #import pdb; pdb.set_trace()
@@ -133,7 +130,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
 
             self.mask_fc1 = self.bertmasklm.cls
             self.mask_fc1.requires_grad = False
-            self.mask_fc2 = nn.Linear(768, len(self.berttokenizer.vocab))
+            self.mask_fc2 = nn.Linear(args.encoder_embed_dim, len(self.berttokenizer.vocab))
             #self.mask_fc2 = nn.Linear(768, len(self.encoder.dictionary))
             self.loss_fct = nn.CrossEntropyLoss(ignore_index=0, reduction='sum')
 
@@ -142,9 +139,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
             self.bart_tokenizer = BartTokenizer.from_pretrained(model_name)
             self.bartmasklm = BartForConditionalGeneration.from_pretrained(model_name)
 
-            # self.bart_mask_fc1 = self.bartmasklm.cls
-            # self.bart_mask_fc1.requires_grad = False
-            self.bart_mask_fc2 = nn.Linear(768, self.bart_tokenizer.vocab_size)
+            self.bart_mask_fc2 = nn.Linear(args.encoder_embed_dim, self.bart_tokenizer.vocab_size)
             #self.bart_mask_fc2 = nn.Linear(768, len(self.encoder.dictionary))
             self.bart_loss_fct = nn.CrossEntropyLoss(ignore_index=-1, reduction='sum')
 

@@ -103,8 +103,6 @@ def collate(
         cur_tensor = merge(key, left_pad=left_pad_source, cur_pad_idx=cur_pad_idx)
         task_batch[key] = cur_tensor.index_select(0, sort_order)
 
-
-
     prev_output_tokens = None
     target = None
     if samples[0].get("target", None) is not None:

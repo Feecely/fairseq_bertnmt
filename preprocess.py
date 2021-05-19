@@ -15,6 +15,8 @@ from collections import Counter
 from itertools import zip_longest
 from multiprocessing import Pool
 
+from torch import batch_norm_gather_stats_with_counts
+
 from bert import BertTokenizer
 from fairseq import options, tasks, utils
 from fairseq.binarizer import Binarizer
@@ -142,7 +144,8 @@ def main(args):
             pool = Pool(processes=num_workers - 1)
             for worker_id in range(1, num_workers):
                 # TODO: worker > 1 is not working for map dataset
-                raise NotImplementedError("Worker > 1 is not implemented for map dataset yet.")
+                if args.input_mapping is True:
+                    raise NotImplementedError("Worker > 1 is not implemented for map dataset yet.")
                 prefix = "{}{}".format(output_prefix, worker_id)
                 pool.apply_async(
                     binarize,
@@ -307,10 +310,12 @@ def main(args):
     make_all(args.source_lang, src_dict)
     if target:
         make_all(args.target_lang, tgt_dict)
-    berttokenizer = BertTokenizer.from_pretrained(args.bert_model_name, do_lower_case=False)
-    barttokenizer = BartTokenizer.from_pretrained(args.bart_model_name, do_lower_case=False)
-    make_all(args.source_lang, berttokenizer)
-    make_all(args.source_lang, barttokenizer)
+    if args.bert_model_name:
+        berttokenizer = BertTokenizer.from_pretrained(args.bert_model_name, do_lower_case=False)
+        make_all(args.source_lang, berttokenizer)
+    if args.bart_model_name:
+        barttokenizer = BartTokenizer.from_pretrained(args.bart_model_name, do_lower_case=False)
+        make_all(args.source_lang, barttokenizer)
     if args.align_suffix:
         make_all_alignments()
 

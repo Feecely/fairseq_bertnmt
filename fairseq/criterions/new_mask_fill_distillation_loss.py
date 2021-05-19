@@ -104,7 +104,7 @@ class NewMaskFillDistillationLossCriterion(FairseqCriterion):
 
         fill_loss_kd = self.MSE_loss(fill_bart_out, fill_encoder_out)
         fill_loss_kd = torch.mean(fill_loss_kd, dim=-1).sum()
-        import pdb; pdb.set_trace()
+        # import pdb; pdb.set_trace()
         loss = loss * self.alpha + mask_loss + fill_loss + (fill_loss_kd + loss_kd) * (1. - self.alpha)
 
         sample_size = (

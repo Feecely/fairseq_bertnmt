@@ -74,6 +74,7 @@ class NewMaskDistillationLossCriterion(FairseqCriterion):
         self.report_accuracy = report_accuracy
         self.MSE_loss = torch.nn.MSELoss(reduce=False, reduction="sum")
         self.alpha = kd_alpha
+        
     def forward(self, model, sample, reduce=True):
         """Compute the loss for the given sample.
 
