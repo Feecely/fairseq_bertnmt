@@ -296,8 +296,8 @@ def add_preprocess_args(parser):
                        help="...")
     group.add_argument("--input-mapping", action="store_true",
                        help="...")
-    group.add_argument('--bert-model-name', default='bert-base-uncased', type=str)
-    group.add_argument('--bart-model-name', default='bart-base-uncased', type=str)
+    group.add_argument('--bert-model-name', default='', type=str)
+    group.add_argument('--bart-model-name', default='', type=str)
     # fmt: on
     return parser
 
