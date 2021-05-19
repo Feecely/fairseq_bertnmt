@@ -72,6 +72,7 @@ class DistillationLossCriterion(FairseqCriterion):
         f2 = torch.mean(bert_output['bert_encoder_out'], dim=0, keepdim=True)
         loss_kd = self.MSE_loss(f1.float(), f2.float())
         return loss * alpha + loss_kd * (1. - alpha)
+        
     @staticmethod
     def aggregate_logging_outputs(logging_outputs):
         """Aggregate logging outputs from data parallel training."""
