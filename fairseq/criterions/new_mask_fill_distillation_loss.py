@@ -90,7 +90,7 @@ class NewMaskFillDistillationLossCriterion(FairseqCriterion):
         # import pdb
         # pdb.set_trace()
         if BERT_encoder_mapping is not None:
-            mask_encoder_out = self.merge_bert_encoder(mask_bert_out, mask_encoder_out, BERT_encoder_mapping)
+            mask_encoder_out = self.merge_encoder(mask_bert_out, mask_encoder_out, BERT_encoder_mapping, -1)
         mask_loss = ret['mask_loss']
         loss_kd = self.MSE_loss(mask_bert_out, mask_encoder_out)
         loss_kd = torch.mean(loss_kd, dim=-1)
@@ -99,7 +99,7 @@ class NewMaskFillDistillationLossCriterion(FairseqCriterion):
         fill_bart_out, fill_encoder_out = ret['fill_bart_out'], ret['fill_encoder_out']
         #import pdb; pdb.set_trace()
         if BART_encoder_mapping is not None:
-            fill_encoder_out = self.merge_bart_encoder(fill_bart_out, fill_encoder_out, BART_encoder_mapping)
+            fill_encoder_out = self.merge_encoder(fill_bart_out, fill_encoder_out, BART_encoder_mapping, -1)
         fill_loss = ret['fill_loss']
 
         fill_loss_kd = self.MSE_loss(fill_bart_out, fill_encoder_out)
@@ -146,30 +146,40 @@ class NewMaskFillDistillationLossCriterion(FairseqCriterion):
         )
         return loss, nll_loss
 
-    def merge_bert_encoder(self, bert_out, encoder_out, dict):
-        tmp = torch.zeros(bert_out.shape).cuda()
-        for line in range(len(dict)):
-            tmp[line][0] = encoder_out[line][0]
-            size = 0
-            for num in range(len(tmp[line])):
-                if num < len(dict[line]) and dict[line][num] != 0:
-                        tmp[line][dict[line][num]] = tmp[line][dict[line][num]] + encoder_out[line][dict[line][num]]
-                        size = dict[line][num]
-            for num in range(size + 1, len(tmp[line])):
-                tmp[line][num] = tmp[line][num] + encoder_out[line][num]
-        return tmp
+    # def merge_bert_encoder(self, bert_out, encoder_out, dict):
+    #     tmp = torch.zeros(bert_out.shape).cuda()
+    #     for line in range(len(dict)):
+    #         tmp[line][0] = encoder_out[line][0]
+    #         size = 0
+    #         for num in range(len(tmp[line])):
+    #             if num < len(dict[line]) and dict[line][num] != 0:
+    #                     tmp[line][dict[line][num]] = tmp[line][dict[line][num]] + encoder_out[line][dict[line][num]]
+    #                     size = dict[line][num]
+    #         for num in range(size + 1, len(tmp[line])):
+    #             tmp[line][num] = tmp[line][num] + encoder_out[line][num]
+    #     return tmp
 
-    def merge_bart_encoder(self, bert_out, encoder_out, dict):
-        tmp = torch.zeros(bert_out.shape).cuda()
-        for line in range(len(dict)):
-            tmp[line][1] = encoder_out[line][1]
-            for num in range(len(tmp[line])):
-                if num < len(dict[line]) and dict[line][num] != 1:
-                        tmp[line][dict[line][num]] = tmp[line][dict[line][num]] + encoder_out[line][dict[line][num]]
-                        size = dict[line][num]
-            for num in range(size + 1, len(tmp[line])):
-                tmp[line][num] = tmp[line][num] + encoder_out[line][num]
-        return tmp
+    def merge_encoder(self, bert_out, encoder_out, dict, pad):
+
+        remove_dim = bert_out.shape[1]
+        dict = (dict != pad) * dict + (dict == pad) * remove_dim # B * T
+        import pdb; pdb.set_trace()
+        merge_shape = encoder_out.shape
+        merge_shape[1] = merge_shape[1] + 1
+        merge_encoder_out = torch.zeros(merge_shape).cuda().index_add_(1, dict, encoder_out)
+        return merge_encoder_out[:, : -1]
+
+    # def merge_bart_encoder(self, bert_out, encoder_out, dict):
+    #     tmp = torch.zeros(bert_out.shape).cuda()
+    #     for line in range(len(dict)):
+    #         tmp[line][1] = encoder_out[line][1]
+    #         for num in range(len(tmp[line])):
+    #             if num < len(dict[line]) and dict[line][num] != 1:
+    #                     tmp[line][dict[line][num]] = tmp[line][dict[line][num]] + encoder_out[line][dict[line][num]]
+    #                     size = dict[line][num]
+    #         for num in range(size + 1, len(tmp[line])):
+    #             tmp[line][num] = tmp[line][num] + encoder_out[line][num]
+    #     return tmp
 
     def compute_accuracy(self, model, net_output, sample):
         lprobs, target = self.get_lprobs_and_target(model, net_output, sample)

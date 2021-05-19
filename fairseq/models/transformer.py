@@ -121,7 +121,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         self.text_filling = getattr(args, 'text_filling', False)
         self.bert_ner = getattr(args, 'bert_ner', False)
         self.bert_sst = getattr(args, 'bert_sst', False)
-
+        self.origin_kd = getattr(args, 'origin_kd', False)
 
 
 
@@ -276,6 +276,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         parser.add_argument('--bert-ner', action='store_true', help='...')
         parser.add_argument('--bert-sst', action='store_true', help='...')
 
+        parser.add_argument('--origin-kd', action='store_true', help='...')
         parser.add_argument('--kd-alpha', default=0.9, type=float)
         parser.add_argument('--extra-data', action='store_true', help='...')
         parser.add_argument('--denoising', action='store_true', help='...')
@@ -480,6 +481,11 @@ class TransformerModel(FairseqEncoderDecoderModel):
         )
 
         ret = {}
+        if self.origin_kd:
+            ret['distillation_out'] = encoder_out
+            with torch.no_grad():
+                bert_encoder_out = self.bertmasklm(BERT_bert_input, attention_mask=~bert_encoder_padding_mask)
+            ret['bert_encoder_out'] = bert_encoder_out
         if self.mask_lm:
             ret['mask_bert_out'] = mask_bert_out
             ret['mask_encoder_out'] = mask_encoder_out

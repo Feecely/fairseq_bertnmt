@@ -96,7 +96,7 @@ def collate(
         if len(splits) == 1:
             continue
         task = splits[0]
-        if key.endswith('labels'):
+        if key.endswith('labels') or key.endswith('mapping'):
             cur_pad_idx = -1
         else:
             cur_pad_idx = pad_dict[task]
