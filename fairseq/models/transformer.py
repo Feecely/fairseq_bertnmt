@@ -5,6 +5,7 @@
 
 import math
 from typing import Any, Dict, List, Optional, Tuple
+import bert
 
 import torch
 import torch.nn as nn
@@ -34,7 +35,7 @@ from torch import Tensor
 from bert import BertModel, BertTokenizer, BertForMaskedLM
 from transformers import AutoModelForTokenClassification, AutoModelForSequenceClassification, AutoModel
 from transformers import AutoTokenizer, AutoModelWithLMHead
-from transformers import BartForConditionalGeneration, BartTokenizer
+from transformers import BartForConditionalGeneration, BartTokenizer, BertModel
 
 DEFAULT_MAX_SOURCE_POSITIONS = 1024
 DEFAULT_MAX_TARGET_POSITIONS = 1024
@@ -123,6 +124,13 @@ class TransformerModel(FairseqEncoderDecoderModel):
         self.bert_sst = getattr(args, 'bert_sst', False)
         self.origin_kd = getattr(args, 'origin_kd', False)
 
+        if self.origin_kd is True:
+            model_name = args.bert_model_name
+            self.bertmasklm = BertModel.from_pretrained(model_name)
+            bert_dim = self.bertmasklm.embeddings.word_embeddings.embedding_dim
+            enc_dim = args.encoder_embed_dim
+            if enc_dim != bert_dim:
+                self.transform_fc = nn.Linear(enc_dim, bert_dim)
 
         if self.mask_lm is True:
             model_name = args.bert_model_name
@@ -327,7 +335,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
             decoder_embed_tokens = encoder_embed_tokens
             args.share_decoder_input_output_embed = True
         else:
-            if args.use_bertinput:
+            if getattr(args, 'use_bertinput', False):
                 src_dict = src_berttokenizer
             encoder_embed_tokens = cls.build_embedding(
                 args, src_dict, args.encoder_embed_dim, args.encoder_embed_path
@@ -392,6 +400,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         BERT_bert_labels=None,
         BERT_encoder_mapping=None,
         BART_encoder_mapping=None,
+        extra_data=None,
         return_all_hiddens: bool = True,
         features_only: bool = False,
         alignment_layer: Optional[int] = None,
@@ -419,7 +428,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
                 BERT_encoder_input, BERT_encoder_output = BERT_bert_input, BERT_encoder_output
             mask_src_lengths = (BERT_encoder_input != self.encoder.dictionary.pad_index).sum(-1)
             mask_encoder_out = self.encoder(BERT_encoder_input, mask_src_lengths)
-            mask_encoder_out = mask_encoder_out['encoder_out'][-1].permute(1, 0, 2).contiguous()
+            mask_encoder_out = mask_encoder_out['encoder_out'][-1].permute(1, 0, 2).contiguous() # B * T * D
             mask_encoder_out = self.mask_fc2(mask_encoder_out)
 
             BERT_encoder_label = (BERT_encoder_input != BERT_encoder_output).int()
@@ -479,7 +488,10 @@ class TransformerModel(FairseqEncoderDecoderModel):
 
         ret = {}
         if self.origin_kd:
-            ret['distillation_out'] = encoder_out
+            if getattr(self, "transform_fc", None) is not None:
+                ret['distillation_out'] = self.transform_fc(encoder_out['encoder_out'][0])
+            else:
+                ret['distillation_out'] = encoder_out
             with torch.no_grad():
                 # hidden or log-probs?
                 bert_encoder_out = self.bertmasklm(BERT_bert_input, attention_mask=~bert_encoder_padding_mask)
