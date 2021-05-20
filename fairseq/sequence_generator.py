@@ -13,7 +13,7 @@ from fairseq.data import data_utils
 from fairseq.models import FairseqIncrementalDecoder
 from torch import Tensor
 from fairseq.ngram_repeat_block import NGramRepeatBlock
-
+from bert import BertTokenizer
 
 class SequenceGenerator(nn.Module):
     def __init__(
@@ -95,6 +95,7 @@ class SequenceGenerator(nn.Module):
         self.mask_lm = args.mask_lm
         self.bert_ner = args.bert_ner
         self.bert_sst = args.bert_sst
+        self.berttokenizer = BertTokenizer.from_pretrained(args.bert_model_name, do_lower_case=False)
 
         if no_repeat_ngram_size > 0:
             self.repeat_ngram_blocker = NGramRepeatBlock(no_repeat_ngram_size)
@@ -161,7 +162,6 @@ class SequenceGenerator(nn.Module):
             }
 
             # bertinput = sample['net_input']['bert_input']
-            # # gpt2_input = sample['net_input']['gpt2_input']
             # bert_encoder_padding_mask = bertinput.eq(self.model.models[0].berttokenizer.pad())
             # if self.model.models[0].bert_encoder is None:
             #     if hasattr(self.model.models[0], 'bert_ner_model'):
@@ -176,13 +176,11 @@ class SequenceGenerator(nn.Module):
             #         bert_outs = self.model.models[0].bertmasklm.bert(bertinput, output_all_encoded_layers=True,
             #                                                          attention_mask=~bert_encoder_padding_mask)
             #         bert_outs = bert_outs[self.bert_output_layer][0]
-            #         # import pdb; pdb.set_trace()
             #
             # else:
             #     bert_outs, _ = self.model.models[0].bert_encoder(bertinput, output_all_encoded_layers=True,
             #                                                      attention_mask=~bert_encoder_padding_mask)
             #     bert_outs = bert_outs[self.bert_output_layer]
-            #
             # if self.model.models[0].mask_cls_sep:
             #     bert_encoder_padding_mask += bertinput.eq(self.model.models[0].berttokenizer.cls())
             #     bert_encoder_padding_mask += bertinput.eq(self.model.models[0].berttokenizer.sep())
@@ -213,6 +211,8 @@ class SequenceGenerator(nn.Module):
             for i, id in enumerate(s["id"].data):
                 # remove padding
                 src = utils.strip_pad(input["src_tokens"].data[i, :], self.pad)
+                if self.use_bertinput:
+                    src = utils.strip_pad(input["bert_input"].data[i, :], self.berttokenizer.pad())
                 ref = (
                     utils.strip_pad(s["target"].data[i, :], self.pad)
                     if s["target"] is not None
@@ -267,7 +267,9 @@ class SequenceGenerator(nn.Module):
             )
         else:
             raise Exception("expected src_tokens or source in net input")
-
+        if self.use_bertinput:
+            src_tokens = net_input['bert_input']
+            src_lengths = (src_tokens != self.berttokenizer.pad()).sum(-1)
         # bsz: total number of sentences in beam
         # Note that src_tokens may have more than 2 dimensions (i.e. audio features)
         bsz, src_len = src_tokens.size()[:2]

@@ -82,8 +82,6 @@ def load_langpair_dataset(
     extra_datasets = []
     if denoising:
         srcbart_datasets = []
-    # if extra_data:
-    #     extra_datasets = []
     for k in itertools.count():
         split_k = split + (str(k) if k > 0 else "")
 
@@ -99,6 +97,10 @@ def load_langpair_dataset(
 
             if extra_data:
                 extraprefix = os.path.join(data_path, '{}.extra.{}-{}.'.format(split_k, src, tgt))
+                extrabertprefix = os.path.join(data_path, '{}.extra.{}-{}.'.format(split_k, src, tgt))
+                extra_bert_mapping_prefix = os.path.join(data_path, '{}.extra.{}-{}.'.format(split_k, src, tgt))
+
+
 
         elif split_exists(split_k, tgt, src, src, data_path):
             prefix = os.path.join(data_path, "{}.{}-{}.".format(split_k, tgt, src))
@@ -153,6 +155,7 @@ def load_langpair_dataset(
         if extra_data:
             extra_datasets.append(data_utils.load_indexed_dataset(extraprefix + src, dataset_impl=dataset_impl,
                                                                  ))
+            extra_datasets = extra_datasets[0]
         #import pdb; pdb.set_trace()
         src_datasets[-1] = PrependTokenDataset(src_datasets[-1], token=src_dict.bos_index)
         if denoising is True:
@@ -205,8 +208,7 @@ def load_langpair_dataset(
         # srcbert_datasets = srcbert_datasets[0]
         # if denoising:
         #     srcbart_datasets = srcbart_datasets[0]
-        # if extra_data:
-        #     extra_datasets = extra_datasets[0]
+
     else:
         sample_ratios = [1] * len(src_datasets)
         sample_ratios[0] = upsample_primary
@@ -382,6 +384,9 @@ class TranslationConfig(FairseqDataclass):
         default=False, metadata={"help": "..."}
     )
     finetune_bert: bool = field(
+        default=False, metadata={"help": "..."}
+    )
+    use_bertinput: bool = field(
         default=False, metadata={"help": "..."}
     )
 
