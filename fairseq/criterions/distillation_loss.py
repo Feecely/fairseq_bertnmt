@@ -31,6 +31,10 @@ class DistillationLossCriterionConfig(FairseqDataclass):
         default=0.9,
         metadata={"help": "..."},
     )
+    kd_level: str = field(
+        default='sent-level',
+        metadata={"help": "..."},
+    )
     sentence_avg: bool = II("optimization.sentence_avg")
 
 
@@ -65,6 +69,7 @@ class DistillationLossCriterion(FairseqCriterion):
             label_smoothing,
             kd_alpha=0.9,
             ignore_prefix_size=0,
+            kd_level='sent-level',
             report_accuracy=False,
     ):
         super().__init__(task)
@@ -73,6 +78,7 @@ class DistillationLossCriterion(FairseqCriterion):
         self.ignore_prefix_size = ignore_prefix_size
         self.report_accuracy = report_accuracy
         self.MSE_loss = torch.nn.MSELoss(reduce=False, reduction="sum")
+        self.kd_level = kd_level
         self.alpha = kd_alpha
 
     def forward(self, model, sample, reduce=True):
@@ -90,12 +96,22 @@ class DistillationLossCriterion(FairseqCriterion):
         distillation_output, bert_output = ret['distillation_out'], ret['bert_encoder_out']['last_hidden_state']
         # [BS, L, D']
         distillation_output = distillation_output.permute(1, 0, 2).contiguous()
-        # [BS, D']
-        distillation_output = torch.mean(distillation_output, dim=1)
-        # [BS, D']
-        bert_output = torch.mean(bert_output, dim=1)
-        loss_kd = self.MSE_loss(distillation_output, bert_output)
-        loss_kd = loss_kd.sum()
+        
+        if self.kd_level == 'sent-level':
+            # [BS, D']
+            bert_output = torch.mean(bert_output, dim=1)
+            # [BS, D']
+            distillation_output = torch.mean(distillation_output, dim=1)
+            loss_kd = self.MSE_loss(distillation_output, bert_output)
+            loss_kd = loss_kd.sum()
+        elif self.kd_level == 'token-level':
+            assert distillation_output.shape == bert_output.shape
+            loss_kd = self.MSE_loss(distillation_output, bert_output)
+            loss_kd = loss_kd.mean(dim=1).sum()
+            # bert_output = torch.mean(bert_output, dim=1)
+        else:
+            raise NotImplementedError()
+        
         loss = loss * self.alpha  + loss_kd * (1. - self.alpha)
 
         sample_size = (
