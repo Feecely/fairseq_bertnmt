@@ -1,6 +1,6 @@
-root=/mnt/yardcephfs/mmyard/g_wxg_td_prc/mt/v_xyvhuang/bert-nmt/
+root=/mnt/yardcephfs/mmyard/g_wxg_td_prc/mt/v_xyvhuang/bert-nmt
 export PYTHONPATH=$root:$PYTHONPATH
-data_signature=/mnt/yardcephfs/mmyard/g_wxg_td_prc/mt/v_xyvhuang/data/bert-nmt/destdir-repro
+data_signature=/mnt/yardcephfs/mmyard/g_wxg_td_prc/mt/v_xyvhuang/data-bin/wmt14_en_de-multi_teacher_tiny
 signature=$1
 
 
@@ -9,16 +9,16 @@ mkdir -p $result_dir/test.out
 
 echo $result_dir
 
-for ckpt in /mnt/yardcephfs/mmyard/g_wxg_td_prc/mt/v_xyvhuang/bert-nmt-checkpoint/kd_task/base/iwed_en_de_fairseq_base/checkpoint_best.pt; do
+for ckpt in /mnt/yardcephfs/mmyard/g_wxg_td_prc/mt/v_xyvhuang/bert-nmt-checkpoint/kd_task/test/iwed_en_de_0.5_test/checkpoint_last.pt; do
 	echo "decoding $ckpt"
 	export CUDA_VISIBLE_DEVICES=3
-	LC_ALL=en_US.UTF-8 python /mnt/yardcephfs/mmyard/g_wxg_td_prc/mt/v_xyvhuang/bert-nmt/generate.py \
+	LC_ALL=en_US.UTF-8 python /mnt/yardcephfs/mmyard/g_wxg_td_prc/mt/v_xyvhuang/fairseq_bertnmt/generate.py \
 	    $data_signature \
 	    --results-path $result_dir/test.out \
 	    --gen-subset test \
 	    --path $ckpt \
-	    --lenpen 0.6 --use-bertinput --left-pad-source False \
-	    --bert-model-name /mnt/yardcephfs/mmyard/g_wxg_td_prc/mt/v_xyvhuang/data/bert-base-ner \
+	    --lenpen 0.6 --left-pad-source \
+	    --bert-model-name /mnt/yardcephfs/mmyard/g_wxg_td_prc/mt/v_xyvhuang/data/bert-base-cased-new \
 	    --batch-size 128 -s en -t de \
 	    --beam 5 --remove-bpe |& tee  $result_dir/test.out/generate-test.txt
 

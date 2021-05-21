@@ -302,7 +302,6 @@ class TransformerModel(FairseqEncoderDecoderModel):
             args.max_source_positions = DEFAULT_MAX_SOURCE_POSITIONS
         if getattr(args, "max_target_positions", None) is None:
             args.max_target_positions = DEFAULT_MAX_TARGET_POSITIONS
-
         src_dict, tgt_dict = task.source_dictionary, task.target_dictionary
 
         if len(task.datasets) > 0:
@@ -312,8 +311,8 @@ class TransformerModel(FairseqEncoderDecoderModel):
 
 
         if args.share_all_embeddings:
-            if src_dict != tgt_dict:
-                raise ValueError("--share-all-embeddings requires a joined dictionary")
+            # if src_dict != tgt_dict:
+            #     raise ValueError("--share-all-embeddings requires a joined dictionary")
             if args.encoder_embed_dim != args.decoder_embed_dim:
                 raise ValueError(
                     "--share-all-embeddings requires --encoder-embed-dim to match --decoder-embed-dim"
@@ -407,7 +406,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         Copied from the base class, but without ``**kwargs``,
         which are not supported by TorchScript.
         """
-        import pdb; pdb.set_trace()
+
         bert_encoder_padding_mask = bert_input.eq(self.berttokenizer.pad())
         if self.mask_cls_sep:
             bert_encoder_padding_mask += bert_input.eq(self.berttokenizer.cls())
@@ -493,12 +492,14 @@ class TransformerModel(FairseqEncoderDecoderModel):
             ret['mask_encoder_out'] = mask_encoder_out
             ret['mask_loss'] = mask_loss
             ret['BERT_encoder_mapping'] = BERT_encoder_mapping
+            ret['bert_padding_mask'] = bert_encoder_padding_mask
 
         if self.text_filling:
             ret['fill_bart_out'] = fill_bart_out
             ret['fill_encoder_out'] = fill_encoder_out
             ret['fill_loss'] = fill_loss
             ret['BART_encoder_mapping'] = BART_encoder_mapping
+            ret['bart_padding_mask'] = bart_encoder_padding_mask
 
         if self.bert_ner:
             ret['ner_bert_out'] = ner_bert_out

@@ -160,7 +160,7 @@ def collate(
         extra_tokens = merge('extra', left_pad=left_pad_source)
         extra_tokens = extra_tokens.index_select(0, sort_order)
         if extra_tokens is not None:
-            batch['net_input']['extra_item'] = extra_tokens
+            batch['net_input']['extra_data'] = extra_tokens
 
     if samples[0].get("alignment", None) is not None:
         bsz, tgt_sz = batch["target"].shape
@@ -341,7 +341,7 @@ class LanguagePairDataset(FairseqDataset):
         else:
             self.buckets = None
         self.pad_to_multiple = pad_to_multiple
-        self.extra_data = extra_datasets
+        self.extra_data = extra_datasets if extra_datasets else None
 
         if hasattr(self.src, "pad_dict"):
             self.pad_dict = self.src.pad_dict

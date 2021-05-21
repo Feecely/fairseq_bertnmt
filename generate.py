@@ -153,6 +153,9 @@ def _main(cfg: DictConfig, output_file):
         num_workers=cfg.dataset.num_workers,
         data_buffer_size=cfg.dataset.data_buffer_size,
     ).next_epoch_itr(shuffle=False)
+    #import pdb; pdb.set_trace()
+
+
     progress = progress_bar.progress_bar(
         itr,
         log_format=cfg.common.log_format,

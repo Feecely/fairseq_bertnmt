@@ -378,10 +378,10 @@ class TranslationConfig(FairseqDataclass):
         default=False, metadata={"help": "..."}
     )
     bart_model_name: str = field(
-        default=" ", metadata={"help": "..."}
+        default='bart-base', metadata={"help": "..."}
     )
     bert_model_name: str = field(
-        default=False, metadata={"help": "..."}
+        default='bert-base-cased', metadata={"help": "..."}
     )
     finetune_bert: bool = field(
         default=False, metadata={"help": "..."}

@@ -37,7 +37,6 @@ class MaskingDataset(FairseqDataset):
         self.input_feeding = input_feeding
         self.remove_eos_from_source = remove_eos_from_source
         self.append_eos_to_target = append_eos_to_target
-
         # init pad_dict
         if hasattr(self.src, "pad_dict"):
             self.pad_dict = self.src.pad_dict

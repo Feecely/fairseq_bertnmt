@@ -200,6 +200,9 @@ class CommonConfig(FairseqDataclass):
             "help": "path to run plasma_store, defaults to /tmp/plasma. Paths outside /tmp tend to fail."
         },
     )
+    # use_bertinput: bool = field(
+    #     default=False, metadata={"help": "..."}
+    # )
 
 
 @dataclass
@@ -869,7 +872,13 @@ class GenerationConfig(FairseqDataclass):
         default=False,
         metadata={"help": "if set, dont use seed for initializing random generators"},
     )
-
+    use_bertinput: bool = field(
+        default=False,
+        metadata={"help": "..."},
+    )
+    bert_model_name: str = field(
+        default='bert-base-cased', metadata={"help": "..."}
+    )
 
 @dataclass
 class CommonEvalConfig(FairseqDataclass):
