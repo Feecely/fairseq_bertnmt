@@ -91,8 +91,16 @@ class SequenceGenerator(nn.Module):
         self.temperature = temperature
         self.match_source_len = match_source_len
 
+
         self.use_bertinput = args.use_bertinput
         self.berttokenizer = BertTokenizer.from_pretrained(args.bert_model_name, do_lower_case=False)
+
+        # not implemented yet.
+        # self.use_bertinput = args.use_bertinput
+        # self.mask_lm = args.mask_lm
+        # self.bert_ner = args.bert_ner
+        # self.bert_sst = args.bert_sst
+
 
         if no_repeat_ngram_size > 0:
             self.repeat_ngram_blocker = NGramRepeatBlock(no_repeat_ngram_size)

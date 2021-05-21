@@ -8,7 +8,7 @@ ROOT=/apdcephfs/share_47076/elliottyan/co-work-projects/fairseq-bert
 #### MODIFY ######
 KD_ALPHA=0.9
 DATA_SIG=wmt14_en_de-bert-or-bart
-MODEL_SIG=d512_bert_kd_task_alpha_${KD_ALPHA}
+MODEL_SIG=d512_bert_kd_feature_alpha_${KD_ALPHA}
 #### MODIFY ######
 
 DATAPATH=$ROOT/data-bin/$DATA_SIG
@@ -16,6 +16,7 @@ SAVEDIR=$ROOT/checkpoints/$DATA_SIG/$MODEL_SIG
 mkdir -p $SAVEDIR
 
 export CUDA_VISIBLE_DEVICES=0,1,2,3
+# export CUDA_VISIBLE_DEVICES=0
 
 LC_ALL=en_US.UTF-8 python $ROOT/fairseq_cli/train.py $DATAPATH \
 -a $ARCH --optimizer adam --lr 0.0007 -s $src -t $tgt \
@@ -25,11 +26,13 @@ LC_ALL=en_US.UTF-8 python $ROOT/fairseq_cli/train.py $DATAPATH \
 --log-interval 100 --disable-validation \
 --fp16 --update-freq 1 --ddp-backend=no_c10d \
 --max-update 200000 --warmup-updates 4000 --warmup-init-lr '1e-07' \
---criterion new_mask_distillation_loss \
+--criterion distillation_loss \
 --masking  \
 --left-pad-source \
---use-bertinput --kd-alpha $KD_ALPHA --mask-lm \
+--kd-alpha $KD_ALPHA --origin-kd \
 --bert-model-name $ROOT/pretrain_models/bert-base-cased-new
+
+# --use-bertinput 
 
 # --share-all-embeddings
 # --input-mapping 

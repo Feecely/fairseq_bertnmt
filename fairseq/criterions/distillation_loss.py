@@ -86,13 +86,16 @@ class DistillationLossCriterion(FairseqCriterion):
         net_output, ret = model(**sample["net_input"])
         loss, nll_loss = self.compute_loss(model, net_output, sample, reduce=reduce)
 
-        distillation_output, bert_output = ret['distillation_out']['encoder_out'][0], ret['bert_encoder_out']['last_hidden_state']
+        # dis: [L, BS, D']; bert: [BS, L', D']
+        distillation_output, bert_output = ret['distillation_out'], ret['bert_encoder_out']['last_hidden_state']
+        # [BS, L, D']
         distillation_output = distillation_output.permute(1, 0, 2).contiguous()
+        # [BS, D']
         distillation_output = torch.mean(distillation_output, dim=1)
+        # [BS, D']
         bert_output = torch.mean(bert_output, dim=1)
         loss_kd = self.MSE_loss(distillation_output, bert_output)
         loss_kd = loss_kd.sum()
-        # import pdb; pdb.set_trace()
         loss = loss * self.alpha  + loss_kd * (1. - self.alpha)
 
         sample_size = (

@@ -17,7 +17,7 @@ for ckpt in /mnt/yardcephfs/mmyard/g_wxg_td_prc/mt/v_xyvhuang/bert-nmt-checkpoin
 	    --results-path $result_dir/test.out \
 	    --gen-subset test \
 	    --path $ckpt \
-	    --lenpen 0.6 --left-pad-source \
+	    --lenpen 0.6 --left-pad-source --use-bertinput --masking \
 	    --bert-model-name /mnt/yardcephfs/mmyard/g_wxg_td_prc/mt/v_xyvhuang/data/bert-base-cased-new \
 	    --batch-size 128 -s en -t de \
 	    --beam 5 --remove-bpe |& tee  $result_dir/test.out/generate-test.txt
@@ -25,7 +25,7 @@ for ckpt in /mnt/yardcephfs/mmyard/g_wxg_td_prc/mt/v_xyvhuang/bert-nmt-checkpoin
 	LC_ALL=en_US.UTF-8 python $root/extract_generate_output.py \
 	    --output $result_dir/test.out/generate-test --srclang de --tgtlang en $result_dir/test.out/generate-test.txt
   LC_ALL=en_US.UTF-8 python $root/strip_file.py $result_dir/test.out/generate-test.de
-
+  echo "finish generate"
 #	cd $data_dir
   ckpt_base="$(basename -- $ckpt)"
   cd $root

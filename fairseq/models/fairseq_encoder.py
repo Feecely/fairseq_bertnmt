@@ -3,6 +3,7 @@
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
 
+from mult_teacher.con_tokenizer import func
 from typing import Dict, List, NamedTuple, Optional
 
 import torch
@@ -56,8 +57,10 @@ class FairseqEncoder(nn.Module):
 
     @torch.jit.unused
     def forward_non_torchscript(self, net_input: Dict[str, Tensor]):
+        import inspect
+        func_keys = inspect.signature(self.forward).parameters.keys()
         encoder_input = {
-            k: v for k, v in net_input.items() if k != "prev_output_tokens"
+            k: v for k, v in net_input.items() if k in func_keys
         }
         return self.forward(**encoder_input)
 

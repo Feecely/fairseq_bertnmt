@@ -142,7 +142,7 @@ def collate(
         "net_input": {
             "src_tokens": src_tokens,
             "src_lengths": src_lengths,
-            'bert_input': task_batch['BERT-bert-output'],
+            'bert_input': task_batch['BERT-bert-output'] if "BERT-bert-output" in task_batch else None,
         },
         "target": target,
     }
@@ -388,6 +388,7 @@ class LanguagePairDataset(FairseqDataset):
             if self.src[index][-1] == eos:
                 src_item = self.src[index][:-1]
 
+        example['id'] = index
         example['source'] = src_item
         example['target'] = tgt_item
         example['extra'] = extra_item

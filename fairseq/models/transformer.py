@@ -5,6 +5,7 @@
 
 import math
 from typing import Any, Dict, List, Optional, Tuple
+import bert
 
 import torch
 import torch.nn as nn
@@ -126,6 +127,10 @@ class TransformerModel(FairseqEncoderDecoderModel):
         if self.origin_kd is True:
             model_name = args.bert_model_name
             self.bertmasklm = BertModel.from_pretrained(model_name)
+            bert_dim = self.bertmasklm.embeddings.word_embeddings.embedding_dim
+            enc_dim = args.encoder_embed_dim
+            if enc_dim != bert_dim:
+                self.transform_fc = nn.Linear(enc_dim, bert_dim)
 
         if self.mask_lm is True:
             model_name = args.bert_model_name
@@ -407,6 +412,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         which are not supported by TorchScript.
         """
 
+
         bert_encoder_padding_mask = bert_input.eq(self.berttokenizer.pad())
         if self.mask_cls_sep:
             bert_encoder_padding_mask += bert_input.eq(self.berttokenizer.cls())
@@ -431,8 +437,8 @@ class TransformerModel(FairseqEncoderDecoderModel):
             masked_encoder_loss = self.loss_fct(mask_encoder_out.view(-1, len(self.berttokenizer.vocab)),
                                                 BERT_encoder_label.view(-1))
             with torch.no_grad():
-                mask_bert_loss, mask_bert_out = self.bertmasklm(BERT_bert_input, attention_mask=~bert_encoder_padding_mask, masked_lm_labels=BERT_bert_labels)
-            mask_loss = masked_encoder_loss + mask_bert_loss
+                _, mask_bert_out = self.bertmasklm(BERT_bert_input, attention_mask=~bert_encoder_padding_mask, masked_lm_labels=BERT_bert_labels)
+            mask_loss = masked_encoder_loss #+ mask_bert_loss
 
         if self.bert_ner:
             with torch.no_grad():
@@ -466,9 +472,9 @@ class TransformerModel(FairseqEncoderDecoderModel):
 
             with torch.no_grad():
                 fill_bart_out = self.bartmasklm(BART_bart_input, attention_mask=~bart_encoder_padding_mask)[0]
-                fill_bart_loss = self.bart_loss_fct(fill_bart_out.view(-1, self.bart_tokenizer.vocab_size),
+                _ = self.bart_loss_fct(fill_bart_out.view(-1, self.bart_tokenizer.vocab_size),
                                                     BART_bart_output.view(-1))
-            fill_loss = fill_encoder_loss + fill_bart_loss
+            fill_loss = fill_encoder_loss # + fill_bart_loss
 
 
         decoder_out = self.decoder(
@@ -483,8 +489,12 @@ class TransformerModel(FairseqEncoderDecoderModel):
 
         ret = {}
         if self.origin_kd:
-            ret['distillation_out'] = encoder_out
+            if getattr(self, "transform_fc", None) is not None:
+                ret['distillation_out'] = self.transform_fc(encoder_out['encoder_out'][0])
+            else:
+                ret['distillation_out'] = encoder_out
             with torch.no_grad():
+                # hidden or log-probs?
                 bert_encoder_out = self.bertmasklm(BERT_bert_input, attention_mask=~bert_encoder_padding_mask)
             ret['bert_encoder_out'] = bert_encoder_out
         if self.mask_lm:
