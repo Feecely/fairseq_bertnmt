@@ -274,6 +274,9 @@ class SequenceGenerator(nn.Module):
             raise Exception("expected src_tokens or source in net input")
         if self.use_bertinput:
             src_tokens = net_input['bert_input']
+            net_input["src_tokens"] = net_input['bert_input']
+            if "source" in net_input:
+                net_input["source"] = net_input['bert_input']
             src_lengths = (src_tokens != self.berttokenizer.pad()).sum(-1)
         # bsz: total number of sentences in beam
         # Note that src_tokens may have more than 2 dimensions (i.e. audio features)
@@ -289,6 +292,7 @@ class SequenceGenerator(nn.Module):
         self.search.init_constraints(constraints, beam_size)
 
         max_len: int = -1
+        #import pdb; pdb.set_trace()
         if self.match_source_len:
             max_len = src_lengths.max().item()
         else:
@@ -423,7 +427,6 @@ class SequenceGenerator(nn.Module):
                         bsz * beam_size, avg_attn_scores.size(1), max_len + 2
                     ).to(scores)
                 attn[:, :, step + 1].copy_(avg_attn_scores)
-
             scores = scores.type_as(lprobs)
             eos_bbsz_idx = torch.empty(0).to(
                 tokens

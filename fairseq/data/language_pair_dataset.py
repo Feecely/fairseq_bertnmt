@@ -198,7 +198,7 @@ def collate(
         for i, sample in enumerate(samples):
             constraints[i, 0 : lens[i]] = samples[i].get("constraints")
         batch["constraints"] = constraints.index_select(0, sort_order)
-
+    #import pdb; pdb.set_trace()
     return batch
 
 

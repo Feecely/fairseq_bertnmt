@@ -80,6 +80,10 @@ def load_langpair_dataset(
         bart_tokenizer = AutoTokenizer.from_pretrained(bart_model_name, do_lower_case=False)
     srcbert_datasets = []
     extra_datasets = []
+    extra_bert_datasets = []
+    extra_bert_mapping = []
+    extra_bart_datasets = []
+    extra_bart_mapping = []
     if denoising:
         srcbart_datasets = []
     for k in itertools.count():
@@ -97,9 +101,10 @@ def load_langpair_dataset(
 
             if extra_data:
                 extraprefix = os.path.join(data_path, '{}.extra.{}-{}.'.format(split_k, src, tgt))
-                extrabertprefix = os.path.join(data_path, '{}.extra.{}-{}.'.format(split_k, src, tgt))
-                extra_bert_mapping_prefix = os.path.join(data_path, '{}.extra.{}-{}.'.format(split_k, src, tgt))
-
+                extra_bert_prefix = os.path.join(data_path, '{}.extra.bert.{}-{}.'.format(split_k, src, tgt))
+                extra_bert_mapping_prefix = os.path.join(data_path, '{}.extra.bert.map.{}-{}.'.format(split_k, src, tgt))
+                extra_bart_prefix = os.path.join(data_path, '{}.extra.bert.{}-{}.'.format(split_k, src, tgt))
+                extra_bart_mapping_prefix = os.path.join(data_path,'{}.extra.bert.map.{}-{}.'.format(split_k, src, tgt))
 
 
         elif split_exists(split_k, tgt, src, src, data_path):
@@ -112,7 +117,14 @@ def load_langpair_dataset(
                 bart_mapping_prefix = os.path.join(data_path, '{}.bart.map.{}-{}.'.format(split_k, src, tgt))
 
             if extra_data:
-                extraprefix = os.path.join(data_path, '{}.extra.{}-{}.'.format(split_k, tgt, src))
+                extraprefix = os.path.join(data_path, '{}.extra.{}-{}.'.format(split_k, src, tgt))
+                extra_bert_prefix = os.path.join(data_path, '{}.extra.bert.{}-{}.'.format(split_k, src, tgt))
+                extra_bert_mapping_prefix = os.path.join(data_path,
+                                                         '{}.extra.bert.map.{}-{}.'.format(split_k, src, tgt))
+                extra_bart_prefix = os.path.join(data_path, '{}.extra.bert.{}-{}.'.format(split_k, src, tgt))
+                extra_bart_mapping_prefix = os.path.join(data_path,
+                                                         '{}.extra.bert.map.{}-{}.'.format(split_k, src, tgt))
+                
         else:
             if k > 0:
                 break
@@ -465,6 +477,8 @@ class TranslationTask(FairseqTask):
 
         # infer langcode
         src, tgt = self.cfg.source_lang, self.cfg.target_lang
+
+        #assert split != 'train'
 
         self.datasets[split] = load_langpair_dataset(
             data_path,

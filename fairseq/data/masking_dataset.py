@@ -62,10 +62,10 @@ class MaskingDataset(FairseqDataset):
                 'source': src_item,
                 'id': index,
             }
+        ret['BERT-bert-output'] = self.srcbert[index]
 
-        src_bert_item = self.srcbert[index]
-        bert_mask_item, bert_mask_labels = self.build_mask_input(self.srcbert[index], self.berttokenizer, mlm_probability=0.15)
-        
+        src_bert_item = self.srcbert[index].clone()
+        bert_mask_item, bert_mask_labels = self.build_mask_input(src_bert_item, self.berttokenizer, mlm_probability=0.15)
         if self.map_dataset is not None:
             bert_mapping = self.map_dataset[index]
             src_mask_item, bert_mapping = self.build_encoder_mask_input(src_item, bert_mapping, src_bert_item, bert_mask_item)
@@ -87,11 +87,12 @@ class MaskingDataset(FairseqDataset):
             ret['BERT-encoder-input'] = src_mask_item
         else:
             ret['BERT-encoder-input'] = bert_mask_item
-            ret['BERT-encoder-output'] = src_bert_item
+            # ret['BERT-encoder-output'] = src_bert_item
+            ret['BERT-encoder-output'] = ret['BERT-bert-output']
         assert ret['BERT-encoder-input'].shape == ret['BERT-encoder-output'].shape
 
         ret['BERT-bert-input'] = bert_mask_item
-        ret['BERT-bert-output'] = src_bert_item
+        # ret['BERT-bert-output'] = src_bert_item
         ret['BERT-bert-labels'] = bert_mask_labels
         if bert_mapping is not None:
             ret['BERT-encoder-mapping'] = bert_mapping

@@ -313,8 +313,6 @@ class TransformerModel(FairseqEncoderDecoderModel):
             src_berttokenizer = next(iter(task.datasets.values())).berttokenizer
         else:
             src_berttokenizer = BertTokenizer.from_pretrained(args.bert_model_name, do_lower_case=False)
-
-
         if args.share_all_embeddings:
             # if src_dict != tgt_dict:
             #     raise ValueError("--share-all-embeddings requires a joined dictionary")
@@ -412,7 +410,6 @@ class TransformerModel(FairseqEncoderDecoderModel):
         which are not supported by TorchScript.
         """
 
-
         bert_encoder_padding_mask = bert_input.eq(self.berttokenizer.pad())
         if self.mask_cls_sep:
             bert_encoder_padding_mask += bert_input.eq(self.berttokenizer.cls())
@@ -426,7 +423,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
             )
         if self.mask_lm:
             if BERT_encoder_input is None or BERT_encoder_output is None:
-                BERT_encoder_input, BERT_encoder_output = BERT_bert_input, BERT_encoder_output
+                BERT_encoder_input, BERT_encoder_output = BERT_bert_input, BERT_bert_output
             mask_src_lengths = (BERT_encoder_input != self.encoder.dictionary.pad_index).sum(-1)
             mask_encoder_out = self.encoder(BERT_encoder_input, mask_src_lengths)
             mask_encoder_out = mask_encoder_out['encoder_out'][-1].permute(1, 0, 2).contiguous() # B * T * D
@@ -438,7 +435,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
                                                 BERT_encoder_label.view(-1))
             with torch.no_grad():
                 _, mask_bert_out = self.bertmasklm(BERT_bert_input, attention_mask=~bert_encoder_padding_mask, masked_lm_labels=BERT_bert_labels)
-            mask_loss = masked_encoder_loss #+ mask_bert_loss
+            mask_loss = masked_encoder_loss  # + mask_bert_loss
 
         if self.bert_ner:
             with torch.no_grad():
@@ -495,7 +492,8 @@ class TransformerModel(FairseqEncoderDecoderModel):
                 ret['distillation_out'] = encoder_out
             with torch.no_grad():
                 # hidden or log-probs?
-                bert_encoder_out = self.bertmasklm(BERT_bert_input, attention_mask=~bert_encoder_padding_mask)
+                # bert_encoder_out = self.bertmasklm(BERT_bert_input, attention_mask=~bert_encoder_padding_mask)
+                bert_encoder_out = self.bertmasklm(bert_input, attention_mask=~bert_encoder_padding_mask)
             ret['bert_encoder_out'] = bert_encoder_out
         if self.mask_lm:
             ret['mask_bert_out'] = mask_bert_out
@@ -706,7 +704,7 @@ class TransformerEncoder(FairseqEncoder):
         # compute padding mask
         encoder_padding_mask = src_tokens.eq(self.padding_idx)
         has_pads = (src_tokens.device.type == "xla" or encoder_padding_mask.any())
-
+        # occur error
         x, encoder_embedding = self.forward_embedding(src_tokens, token_embeddings)
 
         # account for padding while computing the representation

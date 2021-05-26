@@ -555,6 +555,14 @@ class Trainer(object):
                 data_selector=data_selector,
                 tpu=self.tpu,
             )
+            # if self.cfg.task.extra_data:
+            #     self.task.load_dataset(
+            #         self.cfg.dataset.train_subset,
+            #         epoch=epoch,
+            #         combine=combine,
+            #         data_selector=data_selector,
+            #         tpu=self.tpu,
+            #     )
         batch_iterator = self.task.get_batch_iterator(
             dataset=self.task.dataset(self.cfg.dataset.train_subset),
             max_tokens=self.cfg.dataset.max_tokens,

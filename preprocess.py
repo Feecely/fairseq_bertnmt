@@ -17,12 +17,13 @@ from multiprocessing import Pool
 
 from torch import batch_norm_gather_stats_with_counts
 
-from bert import BertTokenizer
+#from bert import BertTokenizer
 from fairseq import options, tasks, utils
 from fairseq.binarizer import Binarizer
 from fairseq.data import indexed_dataset
 #from transformers_bk.models.bart import BartTokenizer
 from transformers.models.bart import BartTokenizer
+from transformers.models.bert import BertTokenizer
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -272,6 +273,7 @@ def main(args):
             map_output_prefix = output_prefix + '.map'
             # if existed mapping files
             if os.path.exists("{}.{}".format(map_input_prefix, lang)) and args.input_mapping is True:
+                #import pdb; pdb.set_trace()
                 make_binary_dataset(None, map_input_prefix, map_output_prefix, lang, num_workers, avoid_tokenize=True)
     def make_all(lang, vocab):
         if args.trainpref:

@@ -21,6 +21,8 @@ from fairseq import checkpoint_utils, options, scoring, tasks, utils
 from fairseq.dataclass.utils import convert_namespace_to_omegaconf
 from fairseq.logging import progress_bar
 from fairseq.logging.meters import StopwatchMeter, TimeMeter
+from bert import BertTokenizer
+from transformers import AutoTokenizer
 from omegaconf import DictConfig
 
 
@@ -77,7 +79,6 @@ def _main(cfg: DictConfig, output_file):
         utils.set_torch_seed(cfg.common.seed)
 
     use_cuda = torch.cuda.is_available() and not cfg.common.cpu
-
     # Load dataset splits
     task = tasks.setup_task(cfg.task)
 
@@ -87,6 +88,9 @@ def _main(cfg: DictConfig, output_file):
         src_dict = getattr(task, "source_dictionary", None)
     except NotImplementedError:
         src_dict = None
+    # if cfg.generation.use_bertinput:
+    #     import pdb; pdb.set_trace()
+    #     src_dict = BertTokenizer.from_pretrained(cfg.generation.bert_model_name, do_lower_case=False)
     tgt_dict = task.target_dictionary
 
     overrides = ast.literal_eval(cfg.common_eval.model_overrides)
@@ -238,7 +242,13 @@ def _main(cfg: DictConfig, output_file):
                 )
             else:
                 if src_dict is not None:
+                    # import pdb; pdb.set_trace()
+                    # if cfg.generation.use_bertinput:
+                    #     tokenizer = AutoTokenizer.from_pretrained(cfg.generation.bert_model_name, do_lower_case=False)
+                    #     src_str = tokenizer.decode(src_tokens)[6:-6]
+                    # else:
                     src_str = src_dict.string(src_tokens, cfg.common_eval.post_process)
+
                 else:
                     src_str = ""
                 if has_target:
@@ -250,7 +260,6 @@ def _main(cfg: DictConfig, output_file):
                             generator
                         ),
                     )
-
             src_str = decode_fn(src_str)
             if has_target:
                 target_str = decode_fn(target_str)

@@ -97,8 +97,8 @@ class NewMaskFillDistillationLossCriterion(FairseqCriterion):
                                                   -1)  # → [B * bert_sent_len * feature]
         mask_loss = ret['mask_loss']  # [1]
         loss_kd = self.MSE_loss(mask_bert_out, mask_encoder_out)  # [B * bert_sent_len * feature]
-        loss_kd = torch.mean(loss_kd, dim=-1)  # [B * feature]
-        loss_kd = loss_kd * bert_padding_mask
+        loss_kd = torch.mean(loss_kd, dim=-1)  # [B * bert_sent_len]
+        loss_kd = loss_kd * bert_padding_mask * (1. - self.alpha)
         loss_kd = loss_kd.sum()
 
         fill_bart_out, fill_encoder_out = ret['fill_bart_out'], ret['fill_encoder_out']
@@ -110,11 +110,12 @@ class NewMaskFillDistillationLossCriterion(FairseqCriterion):
         fill_loss = ret['fill_loss']
 
         fill_loss_kd = self.MSE_loss(fill_bart_out, fill_encoder_out)  # [B * bart_sent_len * feature]
-        fill_loss_kd = torch.mean(fill_loss_kd, dim=-1)  # [B * feature]
-        fill_loss_kd = fill_loss_kd * bart_padding_mask  # remove pad
+        fill_loss_kd = torch.mean(fill_loss_kd, dim=-1)  # [B * bart_sent_len]
+        fill_loss_kd = fill_loss_kd * bart_padding_mask * (1. - self.alpha) # remove pad
         fill_loss_kd = fill_loss_kd.sum()
-        # import pdb; pdb.set_trace()
-        loss = loss * self.alpha + mask_loss + fill_loss + (fill_loss_kd + loss_kd) * (1. - self.alpha)
+
+        #loss = loss * self.alpha + mask_loss + fill_loss + (fill_loss_kd + loss_kd) * (1. - self.alpha)
+        loss = loss * self.alpha + mask_loss + fill_loss + (fill_loss_kd + loss_kd)
 
         sample_size = (
             sample["target"].size(0) if self.sentence_avg else sample["ntokens"]
@@ -175,16 +176,22 @@ class NewMaskFillDistillationLossCriterion(FairseqCriterion):
 
         dict = (dict != pad) * dict + (dict == pad) * sentence_dim  # [B * bert_sent_len]
 
-        merge_shape = list(encoder_out.shape)
-        index = torch.arange(0, bath_dim) * merge_shape[1]
+        merge_shape = list(bert_out.shape)
+        index = torch.arange(0, bath_dim) * (merge_shape[1] + 1)
         dict = dict + index.unsqueeze(dim=1).cuda()
 
         dict = dict.reshape(-1)
         merge_shape[1] = merge_shape[1] + 1
         merge_encoder_out = torch.zeros(merge_shape).cuda().reshape(-1, feature_dim)   # [B * encoder_sent_len + 1 * feature] → [(B * (encoder_sent_len + 1) )* feature]
-        encoder_out = encoder_out.reshape(-1, feature_dim)  # [( B * encoder_sent_len )* feature ]
-
-        merge_encoder_out = merge_encoder_out.index_add_(0, dict, encoder_out)  # [( B * encoder_sent_len )* feature ]
+        puting_encoder_out = encoder_out.reshape(-1, feature_dim)  # [( B * encoder_sent_len )* feature ]
+        # try:
+        #     merge_encoder_out = merge_encoder_out.index_add_(0, dict, mer_encoder_out)  # [( B * encoder_sent_len )* feature ]
+        # except:
+        #     import pdb
+        #     pdb.set_trace()
+        if puting_encoder_out.dtype == torch.float16:
+            merge_encoder_out = merge_encoder_out.half()
+        merge_encoder_out = merge_encoder_out.index_add_(0, dict, puting_encoder_out)  # [( B * encoder_sent_len )* feature ]
         merge_encoder_out = merge_encoder_out.reshape(bath_dim, -1, feature_dim)[:, :sentence_dim]  # [( B * bert_sent_len )* feature ]
 
         return merge_encoder_out
