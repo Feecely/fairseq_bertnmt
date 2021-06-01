@@ -12,10 +12,11 @@ import pdb
 
 from . import data_utils, FairseqDataset
 
-class DenoisingBartDataset(FairseqDataset):
+class DenoisingBartExtraDataset(FairseqDataset):
 
     def __init__(
         self, src, src_sizes, src_dict,
+        extra_src, extra_src_sizes,
         srcbart=None, srcbart_sizes=None, barttokenizer=None, map_dataset=None,
         mask_whole_words=None, item_transform_func=None,
         left_pad_source=True, left_pad_target=False,
@@ -24,6 +25,8 @@ class DenoisingBartDataset(FairseqDataset):
         self.src = src
         self.src_sizes = np.array(src_sizes)
         self.src_dict = src_dict
+        self.extra_src = extra_src
+        self.extra_src_sizes = np.array(extra_src_sizes) if extra_src_sizes is not None else None
         self.srcbart = srcbart
         self.map_dataset = map_dataset
         self.srcbart_sizes = np.array(srcbart_sizes) if srcbart_sizes is not None else None
@@ -35,9 +38,7 @@ class DenoisingBartDataset(FairseqDataset):
         self.remove_eos_from_source = remove_eos_from_source
         self.append_eos_to_target = append_eos_to_target
         self.mask_idx = self.barttokenizer.convert_tokens_to_ids('<mask>')
-        # self.mask_idx = self.src_dict.index('<mask>')
         self.encoder_mask_idx = self.src_dict.index('<mask>')
-        # self.mask_idx = self.barttokenizer._convert_token_to_id('<mask>')
         self.mask_whole_word = mask_whole_words
         self.mask_ratio = 0.3
         self.random_ratio = 0.1
@@ -71,9 +72,9 @@ class DenoisingBartDataset(FairseqDataset):
         
         src_sizes = np.reshape(self.src_sizes, [-1, 1]) if len(self.src_sizes.shape) == 1 else self.src_sizes
         srcbart_sizes = np.reshape(self.srcbart_sizes, [-1, 1]) if len(self.srcbart_sizes.shape) == 1 else self.srcbart_sizes
-        
+        extra_src_sizes = np.reshape(self.extra_src_sizes, [-1, 1]) if len(self.extra_src_sizes.shape) == 1 else self.extra_src_sizes
         self.sizes = (
-            np.concatenate((src_sizes, srcbart_sizes), axis=-1)
+            np.concatenate((src_sizes, srcbart_sizes, extra_src_sizes), axis=-1)
         ).max(-1)
         # init pad_dict
         if hasattr(self.src, "pad_dict"):
@@ -89,14 +90,17 @@ class DenoisingBartDataset(FairseqDataset):
         source_item = self.src[index]
         if isinstance(source_item, dict):
             ret = source_item
+            # retrieve source
+            source_item = source_item['source']
         else:
-            # in this case, we store source with original inputs. 
+            # in this case, we store source with original inputs.
             ret = {
                 'source': source_item,
                 'id': index,
             }
         bart_item = self.srcbart[index]
-        
+        src_extra_item = self.extra_src[index]
+        ret['BART-EXTRA-encoder-output'] = self.extra_src[index].clone()
         def build_bart_item():
             assert bart_item[-1] == self.bart_eos
             mask_bart_item = bart_item.clone()
@@ -123,12 +127,14 @@ class DenoisingBartDataset(FairseqDataset):
         
         # preprocess mappings if exists
         if self.map_dataset is not None:
-            assert source_item.shape[0] >= bart_item.shape[0]
+            # assert source_item.shape[0] >= bart_item.shape[0]
+            assert src_extra_item.shape[0] >= bart_item.shape[0]
             bart_mapping = self.map_dataset[index]#['bart-base']
             # convert to tensor
             # adjust with bos and eos mapping.
             try:
-                assert source_item.shape[0] == len(bart_mapping) + 2
+                # assert source_item.shape[0] == len(bart_mapping) + 2
+                assert src_extra_item.shape[0] == len(bart_mapping) + 2
             except:
                 pdb.set_trace()
 
@@ -139,21 +145,23 @@ class DenoisingBartDataset(FairseqDataset):
             # shift right
             bart_mapping += 1
             assert bart_mapping.unique().shape == bart_item.shape
-            src_bart_input = self.mapping_src_to_bart_denoise_ops(ret['source'], bart_mapping, \
+            src_bart_input = self.mapping_src_to_bart_denoise_ops(src_extra_item, bart_mapping, \
                **extra_kwargs)
         else:
             bart_mapping = None
-            src_bart_input = source_item
+            # src_bart_input = source_item
+            src_bart_input = src_extra_item
 
         # Name format: {TASK}-{module}-{input/output}
         #TODO: check length
         #import pdb; pdb.set_trace()
-        ret['BART-encoder-input'] = src_bart_input
-        ret['BART-encoder-output'] = source_item
-        ret['BART-bart-input'] = mask_bart_item
-        ret['BART-bart-output'] = bart_item
+        ret['BART-EXTRA-encoder-input'] = src_bart_input
+        # ret['BART-encoder-output'] = source_item
+
+        ret['BART-EXTRA-bart-input'] = mask_bart_item
+        ret['BART-EXTRA-bart-output'] = bart_item
         if bart_mapping is not None:
-            ret['BART-encoder-mapping'] = bart_mapping
+            ret['BART-EXTRA-encoder-mapping'] = bart_mapping
         return ret
 
     def __len__(self):
@@ -186,7 +194,6 @@ class DenoisingBartDataset(FairseqDataset):
                 unchange_bool = ~(mask_align + random_align)
  
                 # convert indices and length to source_item scale.
-                # mask_tensor = torch.zeros_like(result).fill_(self.mask_idx)
                 mask_tensor = torch.zeros_like(result).fill_(self.encoder_mask_idx)
                 # init random tensor
                 random_tensor = torch.zeros_like(result)
@@ -418,10 +425,12 @@ class DenoisingBartDataset(FairseqDataset):
         )
 
     def num_tokens(self, index):
-        return max(self.src_sizes[index], self.srcbart_sizes[index])
+        a = max(self.src_sizes[index], self.srcbart_sizes[index])
+        return max(a, self.extra_src_sizes[index])
 
     def size(self, index):
-        return self.src_sizes[index]
+        a = max(self.src_sizes[index], self.srcbart_sizes[index])
+        return max(a, self.extra_src_sizes[index])
 
     def ordered_indices(self):
         if self.shuffle:

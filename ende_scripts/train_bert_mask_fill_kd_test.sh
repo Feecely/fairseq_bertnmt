@@ -8,7 +8,7 @@ ROOT=/apdcephfs/share_47076/elliottyan/co-work-projects/fairseq-bert
 #### MODIFY ######
 KD_ALPHA=0.25
 DATA_SIG=wmt14_en_de-bert-or-bart-mapping
-MODEL_SIG=d512_bert_mask_fill_kd_alpha_test
+MODEL_SIG=d512_bert_mask_fill_kd_alpha_test_mapping
 #### MODIFY ######
 
 DATAPATH=$ROOT/data-bin/$DATA_SIG

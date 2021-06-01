@@ -12,11 +12,13 @@ import pdb
 from . import data_utils, FairseqDataset
 
 
-class MaskingDataset(FairseqDataset):
+class MaskingExtraDataset(FairseqDataset):
 
     def __init__(
         self, src, src_sizes, src_dict,
-        srcbert=None, srcbert_sizes=None, berttokenizer=None,map_dataset=None,
+        extra_src, extra_src_sizes,
+        srcbert=None, srcbert_sizes=None,
+        berttokenizer=None,map_dataset=None,
         left_pad_source=True, left_pad_target=False,
         max_source_positions=1024, max_target_positions=1024,
         shuffle=False, input_feeding=True, remove_eos_from_source=False, append_eos_to_target=False,
@@ -28,6 +30,8 @@ class MaskingDataset(FairseqDataset):
         self.map_dataset = map_dataset
         #[len(i['sentence']) for i in self.encoder_dict]
         self.srcbert_sizes = np.array(srcbert_sizes) if srcbert_sizes is not None else None
+        self.extra_src = extra_src
+        self.extra_src_sizes = np.array(extra_src_sizes) if extra_src_sizes is not None else None
         self.berttokenizer = berttokenizer
         self.left_pad_source = left_pad_source
         self.left_pad_target = left_pad_target
@@ -46,8 +50,10 @@ class MaskingDataset(FairseqDataset):
         # self.sizes = self.src.sizes
         src_sizes = np.reshape(self.src_sizes, [-1, 1]) if len(self.src_sizes.shape) == 1 else self.src_sizes
         srcbert_sizes = np.reshape(self.srcbert_sizes, [-1, 1]) if len(self.srcbert_sizes.shape) == 1 else self.srcbert_sizes
+        extra_src_sizes = np.reshape(self.extra_src_sizes, [-1, 1]) if len(self.extra_src_sizes.shape) == 1 else self.extra_src_sizes
+        #import pdb; pdb.set_trace()
         self.sizes = (
-            np.concatenate((src_sizes, srcbert_sizes), axis=-1)
+            np.concatenate((src_sizes, srcbert_sizes, extra_src_sizes), axis=-1)
         ).max(-1)
 
     def __getitem__(self, index):
@@ -62,40 +68,44 @@ class MaskingDataset(FairseqDataset):
                 'source': src_item,
                 'id': index,
             }
-        ret['BERT-bert-output'] = self.srcbert[index].clone()
-
-        src_bert_item = self.srcbert[index]
+        # ret['BERT-EXTRA-bert-output'] = self.srcbert[index]
+        ret['BERT-EXTRA-bert-output'] = self.srcbert[index].clone()
+        src_extra_item = self.extra_src[index]
+        src_bert_item = self.srcbert[index].clone()
         bert_mask_item, bert_mask_labels = self.build_mask_input(src_bert_item, self.berttokenizer, mlm_probability=0.15)
         if self.map_dataset is not None:
             bert_mapping = self.map_dataset[index]
-            src_mask_item, bert_mapping = self.build_encoder_mask_input(src_item, bert_mapping, ret['BERT-bert-output'], bert_mask_item)
+            # src_mask_item, bert_mapping = self.build_encoder_mask_input(src_item, bert_mapping, src_bert_item, bert_mask_item)
+            src_mask_item, bert_mapping = self.build_encoder_mask_input(src_extra_item, bert_mapping, ret['BERT-EXTRA-bert-output'], bert_mask_item)
+
         else:
             # use bert input.
             src_mask_item = None
             bert_mapping = None
-
+            
         if self.remove_eos_from_source:
             eos = self.src_dict.eos()
             if self.src[index][-1] == eos:
                 # TODO: check whether other inputs also need remove eos.
                 src_item = self.src[index][:-1]
-
+        
         # Name format: {TASK}-{module}-{input/output}
         # TODO: convert BERT encoder input
         if src_mask_item is not None:
-            ret['BERT-encoder-output'] = src_item
-            ret['BERT-encoder-input'] = src_mask_item
+            # ret['EXTRA-encoder-output'] = src_item
+            ret['BERT-EXTRA-encoder-output'] = src_extra_item
+            ret['BERT-EXTRA-encoder-input'] = src_mask_item
         else:
-            ret['BERT-encoder-input'] = bert_mask_item
+            ret['BERT-EXTRA-encoder-input'] = bert_mask_item
             # ret['BERT-encoder-output'] = src_bert_item
-            ret['BERT-encoder-output'] = ret['BERT-bert-output']
-        assert ret['BERT-encoder-input'].shape == ret['BERT-encoder-output'].shape
+            ret['BERT-EXTRA-encoder-output'] = ret['BERT-EXTRA-bert-output']
+        assert ret['BERT-EXTRA-encoder-input'].shape == ret['BERT-EXTRA-encoder-output'].shape
 
-        ret['BERT-bert-input'] = bert_mask_item
+        ret['BERT-EXTRA-bert-input'] = bert_mask_item
         # ret['BERT-bert-output'] = src_bert_item
-        ret['BERT-bert-labels'] = bert_mask_labels
+        ret['BERT-EXTRA-bert-labels'] = bert_mask_labels
         if bert_mapping is not None:
-            ret['BERT-encoder-mapping'] = bert_mapping
+            ret['BERT-EXTRA-encoder-mapping'] = bert_mapping
 
         return ret
         
@@ -139,6 +149,7 @@ class MaskingDataset(FairseqDataset):
         # align_idx = src_item.new(bert_mapping)
         # because of sos in bert input, shift right
         bert_mapping = bert_mapping + 1
+
         assert bert_mapping.shape == src_item.shape
         assert bert_mapping.unique().shape == src_bert_item.shape
 
@@ -162,11 +173,13 @@ class MaskingDataset(FairseqDataset):
         return len(self.src)
 
     def num_tokens(self, index):
-        return max(self.src_sizes[index], self.srcbert_sizes[index])
+        a = max(self.src_sizes[index], self.srcbert_sizes[index])
+        return max(a, self.extra_src_sizes[index])
 
     def size(self, index):
         # add --max-positions to filter too long sentences.
-        return max(self.src_sizes[index], self.srcbert_sizes[index])
+        a = max(self.src_sizes[index], self.srcbert_sizes[index])
+        return max(a, self.extra_src_sizes[index])
 
     def ordered_indices(self):
         if self.shuffle:

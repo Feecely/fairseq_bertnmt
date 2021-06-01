@@ -13,7 +13,7 @@ from argparse import Namespace
 from omegaconf import II
 from bert import BertTokenizer
 from transformers import AutoTokenizer
-
+from transformers import BartTokenizer
 import numpy as np
 from fairseq import metrics, utils
 from fairseq.data import (
@@ -22,6 +22,8 @@ from fairseq.data import (
     LanguagePairDataset,
     DenoisingBartDataset,
     MaskingDataset,
+    MaskingExtraDataset,
+    DenoisingBartExtraDataset,
     PrependTokenDataset,
     StripTokenDataset,
     TruncateDataset,
@@ -78,12 +80,13 @@ def load_langpair_dataset(
     bert_tokenizer = BertTokenizer.from_pretrained(bert_model_name, do_lower_case=False)
     if denoising:
         bart_tokenizer = AutoTokenizer.from_pretrained(bart_model_name, do_lower_case=False)
+        #bart_tokenizer = BartTokenizer.from_pretrained(bart_model_name, do_lower_case=False)
     srcbert_datasets = []
     extra_datasets = []
     extra_bert_datasets = []
-    extra_bert_mapping = []
+    extra_bert_mapping_datasets = []
     extra_bart_datasets = []
-    extra_bart_mapping = []
+    extra_bart_mapping_datasets = []
     if denoising:
         srcbart_datasets = []
     for k in itertools.count():
@@ -103,8 +106,8 @@ def load_langpair_dataset(
                 extraprefix = os.path.join(data_path, '{}.extra.{}-{}.'.format(split_k, src, tgt))
                 extra_bert_prefix = os.path.join(data_path, '{}.extra.bert.{}-{}.'.format(split_k, src, tgt))
                 extra_bert_mapping_prefix = os.path.join(data_path, '{}.extra.bert.map.{}-{}.'.format(split_k, src, tgt))
-                extra_bart_prefix = os.path.join(data_path, '{}.extra.bert.{}-{}.'.format(split_k, src, tgt))
-                extra_bart_mapping_prefix = os.path.join(data_path,'{}.extra.bert.map.{}-{}.'.format(split_k, src, tgt))
+                extra_bart_prefix = os.path.join(data_path, '{}.extra.bart.{}-{}.'.format(split_k, src, tgt))
+                extra_bart_mapping_prefix = os.path.join(data_path,'{}.extra.bart.map.{}-{}.'.format(split_k, src, tgt))
 
 
         elif split_exists(split_k, tgt, src, src, data_path):
@@ -121,10 +124,10 @@ def load_langpair_dataset(
                 extra_bert_prefix = os.path.join(data_path, '{}.extra.bert.{}-{}.'.format(split_k, src, tgt))
                 extra_bert_mapping_prefix = os.path.join(data_path,
                                                          '{}.extra.bert.map.{}-{}.'.format(split_k, src, tgt))
-                extra_bart_prefix = os.path.join(data_path, '{}.extra.bert.{}-{}.'.format(split_k, src, tgt))
+                extra_bart_prefix = os.path.join(data_path, '{}.extra.bart.{}-{}.'.format(split_k, src, tgt))
                 extra_bart_mapping_prefix = os.path.join(data_path,
-                                                         '{}.extra.bert.map.{}-{}.'.format(split_k, src, tgt))
-                
+                                                         '{}.extra.bart.map.{}-{}.'.format(split_k, src, tgt))
+
         else:
             if k > 0:
                 break
@@ -164,12 +167,25 @@ def load_langpair_dataset(
         if denoising:
             srcbart_datasets.append(data_utils.load_indexed_dataset(bartprefix + src, dataset_impl=dataset_impl,
                                                                  ))
-        if extra_data:
+        if extra_data and split == 'train':
             extra_datasets.append(data_utils.load_indexed_dataset(extraprefix + src, dataset_impl=dataset_impl,
                                                                  ))
-            extra_datasets = extra_datasets[0]
+            extra_bert_datasets.append(data_utils.load_indexed_dataset(extra_bert_prefix + src, dataset_impl=dataset_impl,
+                                                                 ))
+            extra_bert_mapping_datasets.append(data_utils.load_indexed_dataset(extra_bert_mapping_prefix + src, dataset_impl=dataset_impl,
+                                                                       ))
+            extra_bart_datasets.append(data_utils.load_indexed_dataset(extra_bart_prefix + src, dataset_impl=dataset_impl,
+                                                                       ))
+            extra_bart_mapping_datasets.append(data_utils.load_indexed_dataset(extra_bart_mapping_prefix + src, dataset_impl=dataset_impl,
+                                                                       ))
+            #import pdb; pdb.set_trace()
+            assert extra_datasets != [] or extra_bert_datasets != [] or extra_bert_mapping_datasets != [] or extra_bart_datasets != [] or extra_bart_mapping_datasets != []
+
+            #extra_datasets = extra_datasets[0]
         #import pdb; pdb.set_trace()
         src_datasets[-1] = PrependTokenDataset(src_datasets[-1], token=src_dict.bos_index)
+        if extra_data and split == 'train':
+            extra_datasets[-1] = PrependTokenDataset(extra_datasets[-1], token=src_dict.bos_index)
         if denoising is True:
             # srcbart_dataset = indexed_dataset.make_dataset(bartprefix + src, impl=dataset_impl,
             #                                                fix_lua_indexing=True, dictionary=bart_tokenizer)
@@ -203,6 +219,30 @@ def load_langpair_dataset(
                 max_source_positions=max_source_positions,
                 max_target_positions=max_target_positions,
             )
+
+        if extra_data is True and split == 'train':
+
+            assert input_mapping is True
+            src_datasets[-1] = MaskingExtraDataset(
+                src_datasets[-1], src_datasets[-1].sizes, src_dict,
+                extra_datasets[-1], extra_datasets[-1].sizes,
+                extra_bert_datasets[-1], extra_bert_datasets[-1].sizes,
+                bert_tokenizer,
+                map_dataset=extra_bert_mapping_datasets[-1],
+                left_pad_source=left_pad_source,
+                left_pad_target=left_pad_target,
+                max_source_positions=max_source_positions,
+                max_target_positions=max_target_positions,
+            )
+
+            src_datasets[-1] = DenoisingBartExtraDataset(
+                src_datasets[-1], src_datasets[-1].sizes, src_dict,
+                extra_datasets[-1], extra_datasets[-1].sizes,
+                extra_bart_datasets[-1], extra_bart_datasets[-1].sizes,
+                bart_tokenizer,
+                map_dataset=extra_bart_mapping_datasets[-1],
+            )
+
         logger.info(
             "{} {} {}-{} {} examples".format(
                 data_path, split_k, src, tgt, len(src_datasets[-1])
@@ -274,7 +314,7 @@ def load_langpair_dataset(
         src_bert_dataset,
         denoising,
         src_bart_dataset,
-        extra_datasets,
+        #extra_datasets,
         left_pad_source=left_pad_source,
         left_pad_target=left_pad_target,
         align_dataset=align_dataset,
@@ -399,6 +439,9 @@ class TranslationConfig(FairseqDataclass):
         default=False, metadata={"help": "..."}
     )
     use_bertinput: bool = field(
+        default=False, metadata={"help": "..."}
+    )
+    use_bartinput: bool = field(
         default=False, metadata={"help": "..."}
     )
 

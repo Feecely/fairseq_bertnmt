@@ -14,6 +14,7 @@ from fairseq.models import FairseqIncrementalDecoder
 from torch import Tensor
 from fairseq.ngram_repeat_block import NGramRepeatBlock
 from bert import BertTokenizer
+from transformers import BartTokenizer
 
 class SequenceGenerator(nn.Module):
     def __init__(
@@ -95,6 +96,9 @@ class SequenceGenerator(nn.Module):
         self.use_bertinput = args.use_bertinput
         self.berttokenizer = BertTokenizer.from_pretrained(args.bert_model_name, do_lower_case=False)
 
+        self.use_bartinput = args.use_bartinput
+        if self.use_bartinput:
+            self.barttokenizer = BartTokenizer.from_pretrained(args.bart_model_name, do_lower_case=False)
         # not implemented yet.
         # self.use_bertinput = args.use_bertinput
         # self.mask_lm = args.mask_lm
@@ -218,6 +222,8 @@ class SequenceGenerator(nn.Module):
                 src = utils.strip_pad(input["src_tokens"].data[i, :], self.pad)
                 if self.use_bertinput:
                     src = utils.strip_pad(input["bert_input"].data[i, :], self.berttokenizer.pad())
+                if self.use_bartinput:
+                    src = utils.strip_pad(input["BART_bart_output"].data[i, :], self.barttokenizer.pad_token_id)
                 ref = (
                     utils.strip_pad(s["target"].data[i, :], self.pad)
                     if s["target"] is not None
@@ -278,6 +284,12 @@ class SequenceGenerator(nn.Module):
             if "source" in net_input:
                 net_input["source"] = net_input['bert_input']
             src_lengths = (src_tokens != self.berttokenizer.pad()).sum(-1)
+        if self.use_bartinput:
+            src_tokens = net_input['BART_bart_output']
+            net_input["src_tokens"] = net_input['BART_bart_output']
+            if "source" in net_input:
+                net_input["source"] = net_input['BART_bart_output']
+            src_lengths = (src_tokens != self.barttokenizer.pad_token_id).sum(-1)
         # bsz: total number of sentences in beam
         # Note that src_tokens may have more than 2 dimensions (i.e. audio features)
         bsz, src_len = src_tokens.size()[:2]

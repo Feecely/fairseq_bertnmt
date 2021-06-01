@@ -31,6 +31,10 @@ class NewMaskFillDistillationLossCriterionConfig(FairseqDataclass):
         default=0.9,
         metadata={"help": "..."},
     )
+    kd_level: str = field(
+        default='sent-level',
+        metadata={"help": "..."},
+    )
     sentence_avg: bool = II("optimization.sentence_avg")
 
 
@@ -65,6 +69,7 @@ class NewMaskFillDistillationLossCriterion(FairseqCriterion):
             label_smoothing,
             kd_alpha=0.9,
             ignore_prefix_size=0,
+            kd_level='sent-level',
             report_accuracy=False,
     ):
         super().__init__(task)
@@ -73,6 +78,7 @@ class NewMaskFillDistillationLossCriterion(FairseqCriterion):
         self.ignore_prefix_size = ignore_prefix_size
         self.report_accuracy = report_accuracy
         self.MSE_loss = torch.nn.MSELoss(reduce=False, reduction="sum")
+        self.kd_level = kd_level
         self.alpha = kd_alpha
 
     def forward(self, model, sample, reduce=True):

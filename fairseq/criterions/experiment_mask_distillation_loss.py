@@ -14,7 +14,7 @@ from omegaconf import II
 
 
 @dataclass
-class DistillationLossCriterionConfig(FairseqDataclass):
+class ExperimentMaskDistillationLossCriterionConfig(FairseqDataclass):
     label_smoothing: float = field(
         default=0.0,
         metadata={"help": "epsilon for label smoothing, 0 means no label smoothing"},
@@ -29,10 +29,6 @@ class DistillationLossCriterionConfig(FairseqDataclass):
     )
     kd_alpha: float = field(
         default=0.9,
-        metadata={"help": "..."},
-    )
-    kd_level: str = field(
-        default='sent-level',
         metadata={"help": "..."},
     )
     sentence_avg: bool = II("optimization.sentence_avg")
@@ -59,18 +55,17 @@ def label_smoothed_nll_loss(lprobs, target, epsilon, ignore_index=None, reduce=T
 
 
 @register_criterion(
-    "distillation_loss", dataclass=DistillationLossCriterionConfig
+    "experiment_mask_distillation_loss", dataclass=ExperimentMaskDistillationLossCriterionConfig
 )
-class DistillationLossCriterion(FairseqCriterion):
+class ExperimentMaskDistillationLossCriterion(FairseqCriterion):
     def __init__(
-            self,
-            task,
-            sentence_avg,
-            label_smoothing,
-            kd_alpha=0.9,
-            ignore_prefix_size=0,
-            kd_level='sent-level',
-            report_accuracy=False,
+        self,
+        task,
+        sentence_avg,
+        label_smoothing,
+        kd_alpha=0.9,
+        ignore_prefix_size=0,
+        report_accuracy=False,
     ):
         super().__init__(task)
         self.sentence_avg = sentence_avg
@@ -78,11 +73,11 @@ class DistillationLossCriterion(FairseqCriterion):
         self.ignore_prefix_size = ignore_prefix_size
         self.report_accuracy = report_accuracy
         self.MSE_loss = torch.nn.MSELoss(reduce=False, reduction="sum")
-        self.kd_level = kd_level
         self.alpha = kd_alpha
-
+        
     def forward(self, model, sample, reduce=True):
         """Compute the loss for the given sample.
+
         Returns a tuple with three elements:
         1) the loss
         2) the sample size, which is used as the denominator for the gradient
@@ -91,27 +86,14 @@ class DistillationLossCriterion(FairseqCriterion):
         net_output, ret = model(**sample["net_input"])
         loss, nll_loss = self.compute_loss(model, net_output, sample, reduce=reduce)
 
-        # dis: [L, BS, D']; bert: [BS, L', D']
-        distillation_output, bert_output = ret['distillation_out'], ret['bert_encoder_out']['last_hidden_state']
-        # [BS, L, D']
-        distillation_output = distillation_output.permute(1, 0, 2).contiguous()
-        if self.kd_level == 'sent-level':
-            # [BS, D']
-            bert_output = torch.mean(bert_output, dim=1)
-            # [BS, D']
-            distillation_output = torch.mean(distillation_output, dim=1)
-            loss_kd = self.MSE_loss(distillation_output, bert_output)
-            loss_kd = loss_kd.sum()
+        mask_bert_out, mask_encoder_out = ret['mask_bert_out'], ret['mask_encoder_out']
+        mask_loss = ret['mask_loss']
+        #bert_labels = ret['BERT_bert_labels']
+        loss_kd = self.MSE_loss(mask_bert_out, mask_encoder_out)
+        loss_kd = torch.mean(loss_kd, dim=-1)
+        loss_kd = loss_kd.sum()
 
-        elif self.kd_level == 'token-level':
-            assert distillation_output.shape == bert_output.shape
-            loss_kd = self.MSE_loss(distillation_output, bert_output)
-            loss_kd = loss_kd.mean(dim=1).sum()
-            # bert_output = torch.mean(bert_output, dim=1)
-        else:
-            raise NotImplementedError()
-
-        loss = loss * self.alpha + loss_kd * (1. - self.alpha)
+        loss = loss + mask_loss + loss_kd * (1. - self.alpha)
 
         sample_size = (
             sample["target"].size(0) if self.sentence_avg else sample["ntokens"]
@@ -122,7 +104,6 @@ class DistillationLossCriterion(FairseqCriterion):
             "ntokens": sample["ntokens"],
             "nsentences": sample["target"].size(0),
             "sample_size": sample_size,
-            "loss_kd": loss_kd.data,
         }
         if self.report_accuracy:
             n_correct, total = self.compute_accuracy(model, net_output, sample)
@@ -135,11 +116,11 @@ class DistillationLossCriterion(FairseqCriterion):
         target = model.get_targets(sample, net_output)
         if self.ignore_prefix_size > 0:
             if getattr(lprobs, "batch_first", False):
-                lprobs = lprobs[:, self.ignore_prefix_size:, :].contiguous()
-                target = target[:, self.ignore_prefix_size:].contiguous()
+                lprobs = lprobs[:, self.ignore_prefix_size :, :].contiguous()
+                target = target[:, self.ignore_prefix_size :].contiguous()
             else:
-                lprobs = lprobs[self.ignore_prefix_size:, :, :].contiguous()
-                target = target[self.ignore_prefix_size:, :].contiguous()
+                lprobs = lprobs[self.ignore_prefix_size :, :, :].contiguous()
+                target = target[self.ignore_prefix_size :, :].contiguous()
         return lprobs.view(-1, lprobs.size(-1)), target.view(-1)
 
     def compute_loss(self, model, net_output, sample, reduce=True):

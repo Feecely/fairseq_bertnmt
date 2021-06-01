@@ -146,21 +146,55 @@ def collate(
         },
         "target": target,
     }
+    if 'BERT-EXTRA-encoder-input' in task_batch.keys() and task_batch['BERT-EXTRA-encoder-input'] is not None:
+        assert task_batch['BERT-EXTRA-encoder-input'].shape[1] == task_batch['BERT-encoder-input'].shape[1]
+        assert task_batch['BERT-EXTRA-encoder-output'].shape[1] == task_batch['BERT-encoder-output'].shape[1]
+        assert task_batch['BERT-EXTRA-bert-input'].shape[1] == task_batch['BERT-bert-input'].shape[1]
+        assert task_batch['BERT-EXTRA-bert-output'].shape[1] == task_batch['BERT-bert-output'].shape[1]
+        assert task_batch['BERT-EXTRA-encoder-mapping'].shape[1] == task_batch['BERT-encoder-mapping'].shape[1]
+        task_batch['BERT-encoder-input'] = torch.cat(
+            (task_batch['BERT-encoder-input'], task_batch['BERT-EXTRA-encoder-input']), 0)
+        task_batch['BERT-encoder-output'] = torch.cat(
+            (task_batch['BERT-encoder-output'], task_batch['BERT-EXTRA-encoder-output']), 0)
+        task_batch['BERT-bert-input'] = torch.cat(
+            (task_batch['BERT-bert-input'], task_batch['BERT-EXTRA-bert-input']), 0)
+        task_batch['BERT-bert-output'] = torch.cat(
+            (task_batch['BERT-bert-output'], task_batch['BERT-EXTRA-bert-output']), 0)
+        task_batch['BERT-encoder-mapping'] = torch.cat(
+            (task_batch['BERT-encoder-mapping'], task_batch['BERT-EXTRA-encoder-mapping']), 0)
+
+    if 'BART-EXTRA-encoder-input' in task_batch.keys() and task_batch['BART-EXTRA-encoder-input'] is not None:
+        assert task_batch['BART-EXTRA-encoder-input'].shape[1] == task_batch['BART-encoder-input'].shape[1]
+        assert task_batch['BART-EXTRA-encoder-output'].shape[1] == task_batch['BART-encoder-output'].shape[1]
+        assert task_batch['BART-EXTRA-bart-input'].shape[1] == task_batch['BART-bart-input'].shape[1]
+        assert task_batch['BART-EXTRA-bart-output'].shape[1] == task_batch['BART-bart-output'].shape[1]
+        assert task_batch['BART-EXTRA-encoder-mapping'].shape[1] == task_batch['BART-encoder-mapping'].shape[1]
+        task_batch['BART-encoder-input'] = torch.cat(
+            (task_batch['BART-encoder-input'], task_batch['BART-EXTRA-encoder-input']), 0)
+        task_batch['BART-encoder-output'] = torch.cat(
+            (task_batch['BART-encoder-output'], task_batch['BART-EXTRA-encoder-output']), 0)
+        task_batch['BART-bart-input'] = torch.cat(
+            (task_batch['BART-bart-input'], task_batch['BART-EXTRA-bart-input']), 0)
+        task_batch['BART-bart-output'] = torch.cat(
+            (task_batch['BART-bart-output'], task_batch['BART-EXTRA-bart-output']), 0)
+        task_batch['BART-encoder-mapping'] = torch.cat(
+            (task_batch['BART-encoder-mapping'], task_batch['BART-EXTRA-encoder-mapping']), 0)
 
     for key in task_batch:
-        key_under = key.replace('-', '_')
-        batch['net_input'][key_under] = task_batch[key]
+        if not key.startswith('BERT-EXTRA') and not key.startswith('BART-EXTRA'):
+            key_under = key.replace('-', '_')
+            batch['net_input'][key_under] = task_batch[key]
 
     if prev_output_tokens is not None:
         batch["net_input"]["prev_output_tokens"] = prev_output_tokens.index_select(
             0, sort_order
         )
-
-    if samples[0].get('extra', None) is not None:
-        extra_tokens = merge('extra', left_pad=left_pad_source)
-        extra_tokens = extra_tokens.index_select(0, sort_order)
-        if extra_tokens is not None:
-            batch['net_input']['extra_data'] = extra_tokens
+    #import pdb; pdb.set_trace()
+    # if samples[0].get('extra', None) is not None:
+    #     extra_tokens = merge('extra', left_pad=left_pad_source)
+    #     extra_tokens = extra_tokens.index_select(0, sort_order)
+    #     if extra_tokens is not None:
+    #         batch['net_input']['extra_data'] = extra_tokens
 
     if samples[0].get("alignment", None) is not None:
         bsz, tgt_sz = batch["target"].shape
@@ -253,7 +287,7 @@ class LanguagePairDataset(FairseqDataset):
         src_bert_dataset=None,
         denoising=False,
         src_bart_dataset=None,
-        extra_datasets=None,
+        #extra_datasets=None,
         left_pad_source=True,
         left_pad_target=False,
         shuffle=True,
@@ -341,7 +375,7 @@ class LanguagePairDataset(FairseqDataset):
         else:
             self.buckets = None
         self.pad_to_multiple = pad_to_multiple
-        self.extra_data = extra_datasets if extra_datasets else None
+        #self.extra_data = extra_datasets if extra_datasets else None
 
         if hasattr(self.src, "pad_dict"):
             self.pad_dict = self.src.pad_dict
@@ -378,10 +412,10 @@ class LanguagePairDataset(FairseqDataset):
             if self.src[index][0] != bos:
                 src_item = torch.cat([torch.LongTensor([bos]), self.src[index]])
 
-        if self.extra_data:
-            extra_item = self.extra_data[index] if index <= len(self.extra_data) else None
-        else:
-            extra_item = None
+        # if self.extra_data:
+        #     extra_item = self.extra_data[index] if index <= len(self.extra_data) else None
+        # else:
+        #     extra_item = None
 
         if self.remove_eos_from_source:
             eos = self.src_dict.eos()
@@ -391,7 +425,7 @@ class LanguagePairDataset(FairseqDataset):
         example['id'] = index
         example['source'] = src_item
         example['target'] = tgt_item
-        example['extra'] = extra_item
+        # example['extra'] = extra_item
 
         if self.align_dataset is not None:
             example["alignment"] = self.align_dataset[index]
@@ -519,8 +553,8 @@ class LanguagePairDataset(FairseqDataset):
         self.src.prefetch(indices)
         if self.tgt is not None:
             self.tgt.prefetch(indices)
-        if self.extra_data is not None:
-            self.extra_data.prefetch(indices)
+        # if self.extra_data is not None:
+        #     self.extra_data.prefetch(indices)
         if self.align_dataset is not None:
             self.align_dataset.prefetch(indices)
 

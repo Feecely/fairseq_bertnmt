@@ -29,8 +29,9 @@ python $root/generate.py \
     $root/data-bin/$data_signature \
     --results-path $result_dir/test.out \
     --path $ckpt \
-    --lenpen 0.6 \
-    --beam 4
+    --lenpen 0.6 --left-pad-source --use-bertinput --masking \
+    --bert-model-name $root/pretrain_models/bert-base-cased-new \
+    --beam 4 --remove-bpe
 
 echo "$result_dir"
 LC_ALL=en_US.UTF-8 python $root/scripts/extract_generate_output.py \
