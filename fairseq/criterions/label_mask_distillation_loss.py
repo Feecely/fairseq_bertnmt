@@ -88,15 +88,17 @@ class LabelMaskDistillationLossCriterion(FairseqCriterion):
 
         mask_bert_out, mask_encoder_out = ret['mask_bert_out'], ret['mask_encoder_out']
         mask_loss = ret['mask_loss']
-        bert_labels = ret['BERT_bert_labels']
-        bert_labels = (bert_labels != -1).half().unsqueeze(dim=-1)
+        # bert_labels = ret['BERT_bert_labels']
+        # bert_labels = (bert_labels != -1).half().unsqueeze(dim=-1)
+        padding_mask = ret['bert_padding_mask']
+        padding_mask = (padding_mask == False).half().unsqueeze(dim=-1)
         loss_kd = self.MSE_loss(mask_bert_out, mask_encoder_out)
-        loss_kd = loss_kd * bert_labels
+        loss_kd = loss_kd * padding_mask
         loss_kd = torch.mean(loss_kd, dim=-1)
         loss_kd = loss_kd.sum()
         #loss_kd = self.MSE_loss(torch.mul(mask_bert_out, bert_labels), torch.mul(mask_encoder_out, bert_labels)).sum()
 
-        loss = loss + mask_loss + loss_kd * (1. - self.alpha)
+        loss = loss + loss_kd * (1. - self.alpha)
         # loss = loss + mask_loss + loss_kd
         sample_size = (
             sample["target"].size(0) if self.sentence_avg else sample["ntokens"]

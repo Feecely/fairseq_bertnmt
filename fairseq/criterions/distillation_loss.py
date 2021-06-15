@@ -92,7 +92,7 @@ class DistillationLossCriterion(FairseqCriterion):
         loss, nll_loss = self.compute_loss(model, net_output, sample, reduce=reduce)
 
         # dis: [L, BS, D']; bert: [BS, L', D']
-        distillation_output, bert_output = ret['distillation_out'], ret['bert_encoder_out']['last_hidden_state']
+        distillation_output, bert_output = ret['distillation_out'], ret['bert_encoder_out']
         # [BS, L, D']
         distillation_output = distillation_output.permute(1, 0, 2).contiguous()
         if self.kd_level == 'sent-level':
@@ -105,6 +105,7 @@ class DistillationLossCriterion(FairseqCriterion):
 
         elif self.kd_level == 'token-level':
             assert distillation_output.shape == bert_output.shape
+            #import pdb; pdb.set_trace()
             loss_kd = self.MSE_loss(distillation_output, bert_output)
             loss_kd = loss_kd.mean(dim=1).sum()
             # bert_output = torch.mean(bert_output, dim=1)
@@ -119,10 +120,10 @@ class DistillationLossCriterion(FairseqCriterion):
         logging_output = {
             "loss": loss.data,
             "nll_loss": nll_loss.data,
+            "kd_loss": loss_kd.data,
             "ntokens": sample["ntokens"],
             "nsentences": sample["target"].size(0),
             "sample_size": sample_size,
-            "loss_kd": loss_kd.data,
         }
         if self.report_accuracy:
             n_correct, total = self.compute_accuracy(model, net_output, sample)
@@ -167,6 +168,7 @@ class DistillationLossCriterion(FairseqCriterion):
         """Aggregate logging outputs from data parallel training."""
         loss_sum = sum(log.get("loss", 0) for log in logging_outputs)
         nll_loss_sum = sum(log.get("nll_loss", 0) for log in logging_outputs)
+        kd_loss_sum = sum(log.get("kd_loss", 0) for log in logging_outputs)
         ntokens = sum(log.get("ntokens", 0) for log in logging_outputs)
         sample_size = sum(log.get("sample_size", 0) for log in logging_outputs)
 
@@ -175,6 +177,9 @@ class DistillationLossCriterion(FairseqCriterion):
         )
         metrics.log_scalar(
             "nll_loss", nll_loss_sum / ntokens / math.log(2), ntokens, round=3
+        )
+        metrics.log_scalar(
+            "kd_loss", kd_loss_sum / ntokens / math.log(2), ntokens, round=3
         )
         metrics.log_derived(
             "ppl", lambda meters: utils.get_perplexity(meters["nll_loss"].avg)

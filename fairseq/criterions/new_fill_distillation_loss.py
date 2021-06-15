@@ -88,11 +88,11 @@ class NewFillDistillationLossCriterion(FairseqCriterion):
 
         fill_bart_out, fill_encoder_out = ret['fill_bart_out'], ret['fill_encoder_out']
         fill_loss = ret['fill_loss']
-        loss_kd = self.MSE_loss(fill_bart_out, fill_encoder_out)
+        loss_kd = self.MSE_loss(fill_encoder_out, fill_bart_out)
         loss_kd = torch.mean(loss_kd, dim=-1)
         loss_kd = loss_kd.sum()
 
-        loss = loss * self.alpha + fill_loss + loss_kd * (1. - self.alpha)
+        loss = loss + loss_kd * (1. - self.alpha)
 
         sample_size = (
             sample["target"].size(0) if self.sentence_avg else sample["ntokens"]
@@ -100,6 +100,8 @@ class NewFillDistillationLossCriterion(FairseqCriterion):
         logging_output = {
             "loss": loss.data,
             "nll_loss": nll_loss.data,
+            "kd_loss": loss_kd.data,
+            "fill_loss": fill_loss.data,
             "ntokens": sample["ntokens"],
             "nsentences": sample["target"].size(0),
             "sample_size": sample_size,
@@ -147,6 +149,8 @@ class NewFillDistillationLossCriterion(FairseqCriterion):
         """Aggregate logging outputs from data parallel training."""
         loss_sum = sum(log.get("loss", 0) for log in logging_outputs)
         nll_loss_sum = sum(log.get("nll_loss", 0) for log in logging_outputs)
+        kd_loss_sum = sum(log.get("kd_loss", 0) for log in logging_outputs)
+        fill_loss_sum = sum(log.get("fill_loss", 0) for log in logging_outputs)
         ntokens = sum(log.get("ntokens", 0) for log in logging_outputs)
         sample_size = sum(log.get("sample_size", 0) for log in logging_outputs)
 
@@ -155,6 +159,12 @@ class NewFillDistillationLossCriterion(FairseqCriterion):
         )
         metrics.log_scalar(
             "nll_loss", nll_loss_sum / ntokens / math.log(2), ntokens, round=3
+        )
+        metrics.log_scalar(
+            "kd_loss", kd_loss_sum / ntokens / math.log(2), ntokens, round=3
+        )
+        metrics.log_scalar(
+            "fill_loss", fill_loss_sum, ntokens, round=3
         )
         metrics.log_derived(
             "ppl", lambda meters: utils.get_perplexity(meters["nll_loss"].avg)

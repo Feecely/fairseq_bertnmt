@@ -121,7 +121,7 @@ class NewMaskFillDistillationLossCriterion(FairseqCriterion):
         fill_loss_kd = fill_loss_kd.sum()
 
         #loss = loss * self.alpha + mask_loss + fill_loss + (fill_loss_kd + loss_kd) * (1. - self.alpha)
-        loss = loss * self.alpha + mask_loss + fill_loss + (fill_loss_kd + loss_kd)
+        loss = loss + (fill_loss_kd + loss_kd) * (1. - self.alpha)
 
         sample_size = (
             sample["target"].size(0) if self.sentence_avg else sample["ntokens"]

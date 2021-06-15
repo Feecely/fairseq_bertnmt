@@ -14,7 +14,7 @@ from omegaconf import II
 
 
 @dataclass
-class NomasklossMaskDistillationLossCriterionConfig(FairseqDataclass):
+class NomasklossMaskKlDistillationLossCriterionConfig(FairseqDataclass):
     label_smoothing: float = field(
         default=0.0,
         metadata={"help": "epsilon for label smoothing, 0 means no label smoothing"},
@@ -55,9 +55,9 @@ def label_smoothed_nll_loss(lprobs, target, epsilon, ignore_index=None, reduce=T
 
 
 @register_criterion(
-    "nomaskloss_mask_distillation_loss", dataclass=NomasklossMaskDistillationLossCriterionConfig
+    "nomaskloss_mask_kl_distillation_loss", dataclass=NomasklossMaskKlDistillationLossCriterionConfig
 )
-class NomasklossMaskDistillationLossCriterion(FairseqCriterion):
+class NomasklossMaskKlDistillationLossCriterion(FairseqCriterion):
     def __init__(
             self,
             task,
@@ -74,6 +74,8 @@ class NomasklossMaskDistillationLossCriterion(FairseqCriterion):
         self.report_accuracy = report_accuracy
         self.MSE_loss = torch.nn.MSELoss(reduce=False, reduction="sum")
         self.KL_loss = torch.nn.KLDivLoss(reduce=False, reduction="none")
+        self.softmax = torch.nn.Softmax(dim=-1)
+        self.logsoftmax = torch.nn.LogSoftmax(dim=-1)
         self.alpha = kd_alpha
 
     def forward(self, model, sample, reduce=True):
@@ -88,16 +90,18 @@ class NomasklossMaskDistillationLossCriterion(FairseqCriterion):
         loss, nll_loss = self.compute_loss(model, net_output, sample, reduce=reduce)
 
         mask_bert_out, mask_encoder_out = ret['mask_bert_out'], ret['mask_encoder_out']
-        mask_loss = ret['mask_loss']
+        # mask_loss = ret['mask_loss']
         # bert_labels = ret['BERT_bert_labels']
         # bert_labels = (bert_labels != -1).half().unsqueeze(dim=-1)
-        loss_kd = self.MSE_loss(mask_encoder_out, mask_bert_out)
+        # loss_kl = self.KL_loss(mask_bert_out, mask_encoder_out)
+        loss_kl = self.KL_loss(self.logsoftmax(mask_encoder_out), self.softmax(mask_bert_out))
+        #import pdb; pdb.set_trace()
         # loss_kd = loss_kd * bert_labels
-        loss_kd = torch.mean(loss_kd, dim=-1)
-        loss_kd = loss_kd.sum()
+        loss_kl = torch.mean(loss_kl, dim=-1)
+        loss_kl = loss_kl.sum()
         # loss_kd = self.MSE_loss(torch.mul(mask_bert_out, bert_labels), torch.mul(mask_encoder_out, bert_labels)).sum()
-
-        loss = loss + loss_kd * (1. - self.alpha)
+        # mask_bert_out, mask_encoder_out = mask_bert_out.float(), mask_encoder_out.float()
+        loss = loss + loss_kl * (1. - self.alpha)
         # loss = loss + mask_loss + loss_kd
         sample_size = (
             sample["target"].size(0) if self.sentence_avg else sample["ntokens"]
@@ -105,8 +109,7 @@ class NomasklossMaskDistillationLossCriterion(FairseqCriterion):
         logging_output = {
             "loss": loss.data,
             "nll_loss": nll_loss.data,
-            "kd_loss": loss_kd.data,
-            "mask_loss": mask_loss.data,
+            "kl_loss": loss_kl.data,
             "ntokens": sample["ntokens"],
             "nsentences": sample["target"].size(0),
             "sample_size": sample_size,
@@ -154,8 +157,7 @@ class NomasklossMaskDistillationLossCriterion(FairseqCriterion):
         """Aggregate logging outputs from data parallel training."""
         loss_sum = sum(log.get("loss", 0) for log in logging_outputs)
         nll_loss_sum = sum(log.get("nll_loss", 0) for log in logging_outputs)
-        kd_loss_sum = sum(log.get("kd_loss", 0) for log in logging_outputs)
-        mask_loss_sum = sum(log.get("mask_loss", 0) for log in logging_outputs)
+        kl_loss_sum = sum(log.get("kl_loss", 0) for log in logging_outputs)
         ntokens = sum(log.get("ntokens", 0) for log in logging_outputs)
         sample_size = sum(log.get("sample_size", 0) for log in logging_outputs)
 
@@ -166,10 +168,7 @@ class NomasklossMaskDistillationLossCriterion(FairseqCriterion):
             "nll_loss", nll_loss_sum / ntokens / math.log(2), ntokens, round=3
         )
         metrics.log_scalar(
-            "kd_loss", kd_loss_sum / ntokens / math.log(2), ntokens, round=3
-        )
-        metrics.log_scalar(
-            "mask_loss", mask_loss_sum, ntokens, round=3
+            "kl_loss_sum", nll_loss_sum / ntokens / math.log(2), ntokens, round=3
         )
         metrics.log_derived(
             "ppl", lambda meters: utils.get_perplexity(meters["nll_loss"].avg)

@@ -1,6 +1,5 @@
 root=/apdcephfs/share_47076/elliottyan/co-work-projects/fairseq-bert
 export PYTHONPATH=$root:$PYTHONPATH
-
 if [ -z "$2" ]; then
 	data_signature=wmt14_en_de
 else
@@ -42,4 +41,3 @@ ckpt_base="$(basename -- $ckpt)"
 bash eval_test14.sh $result_dir/test.out/generate-test.de > $result_dir/eval.result.${ckpt_base}
 
 cat $result_dir/eval.result.${ckpt_base}
-
