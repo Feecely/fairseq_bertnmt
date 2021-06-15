@@ -35,7 +35,7 @@ from torch import Tensor
 from bert import BertModel, BertTokenizer, BertForMaskedLM
 from transformers import AutoModelForTokenClassification, AutoModelForSequenceClassification, AutoModel
 from transformers import AutoTokenizer, AutoModelWithLMHead
-from transformers import BartForConditionalGeneration, BartTokenizer, BertModel, BartModel, BartConfig
+from transformers import BartForConditionalGeneration, BartTokenizer, BertModel, BartModel, BartConfig, BertLayer, BertConfig
 
 AAA = 0
 
@@ -145,6 +145,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         self.bart_decoder_init = getattr(args, 'bart_decoder_init', False)
         self.bart_decoder_freeze = getattr(args, 'bart_decoder_freeze', False)
         self.bert_auto_encoder = getattr(args, 'bert_auto_encoder', 0)
+        self.bert_auto_bertencoder = getattr(args, 'bert_auto_bertencoder', 0)
 
         self.berttokenizer = BertTokenizer.from_pretrained(args.bert_model_name, do_lower_case=False)
         if self.use_bartinput:
@@ -181,6 +182,17 @@ class TransformerModel(FairseqEncoderDecoderModel):
                 self.bert_auto_encoder_layers = nn.ModuleList([])
                 self.bert_auto_encoder_layers.extend(
                     [self.encoder.build_encoder_layer(args) for i in range(self.bert_auto_encoder)])
+            if self.bert_auto_bertencoder > 0:
+                self.endim2bertdim = nn.Linear(args.encoder_embed_dim, self.bertmasklm.config.hidden_size)
+                self.bertdim2endim = nn.Linear(self.bertmasklm.config.hidden_size, args.encoder_embed_dim)
+                configuration = BertConfig.from_json_file(model_name + '/config.json')
+                # configuration.hidden_size = args.encoder_embed_dim
+                bert_auto_bertencoder_model = BertModel(configuration)
+                self.bert_auto_bertencoder_layers = nn.ModuleList([])
+                self.bert_auto_bertencoder_layers.extend(
+                    [copy.deepcopy(bert_auto_bertencoder_model.encoder.layer[0]) for i in range(self.bert_auto_bertencoder)])
+                del bert_auto_bertencoder_model
+
 
 
         if self.text_filling is True:
@@ -356,6 +368,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         parser.add_argument('--bart-decoder-init', action='store_true', help='...')
         parser.add_argument('--bart-decoder-freeze', action='store_true', help='...')
         parser.add_argument('--bert-auto-encoder', default=0, type=int)
+        parser.add_argument('--bert-auto-bertencoder', default=0, type=int)
         # parser.add_argument('--bart-auto-encoder', default=0, type=int)
 
         # fmt: on
@@ -515,8 +528,20 @@ class TransformerModel(FairseqEncoderDecoderModel):
                 for layer in self.bert_auto_encoder_layers:
                     mask_auto_encoder_out = layer(mask_auto_encoder_out, encoder_padding_mask=mask_encoder_out['encoder_padding_mask'][0])
                 mask_encoder_out['encoder_out'][-1] = mask_auto_encoder_out
-            mask_encoder_out = mask_encoder_out['encoder_out'][-1].permute(1, 0, 2).contiguous()  # B * T * D
-            mask_encoder_out = self.mask_fc2(mask_encoder_out)
+                mask_encoder_out = mask_encoder_out['encoder_out'][-1].permute(1, 0, 2).contiguous()  # B * T * D
+                mask_encoder_out = self.mask_fc2(mask_encoder_out)
+            elif self.bert_auto_bertencoder:
+                mask_auto_encoder_out = mask_encoder_out['encoder_out'][-1].permute(1, 0, 2).contiguous()
+                mask_auto_encoder_out = self.endim2bertdim(mask_auto_encoder_out)
+                # import pdb; pdb.set_trace()
+                for layer in self.bert_auto_bertencoder_layers:
+                    #TODO:attention mask
+                    mask_auto_encoder_out = layer(mask_auto_encoder_out)
+                mask_auto_encoder_out = self.bertdim2endim(mask_auto_encoder_out[0])
+                mask_encoder_out = self.mask_fc2(mask_auto_encoder_out)
+            else:
+                mask_encoder_out = mask_encoder_out['encoder_out'][-1].permute(1, 0, 2).contiguous()  # B * T * D
+                mask_encoder_out = self.mask_fc2(mask_encoder_out)
 
             BERT_encoder_label = (BERT_encoder_input != BERT_encoder_output).int()
             BERT_encoder_label = torch.mul(BERT_encoder_label, BERT_encoder_output)
