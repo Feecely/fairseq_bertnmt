@@ -10,8 +10,9 @@ import torch
 from fairseq.file_io import PathManager
 from fairseq.tokenizer import tokenize_line
 from typing import List, Dict
-from bert import BertTokenizer
+#from bert import BertTokenizer
 from transformers.models.bart import BartTokenizer
+from transformers.models.bert import BertTokenizer
 
 def safe_readline(f):
     pos = f.tell()
@@ -78,15 +79,15 @@ class Binarizer:
                         tokenizedline = line.strip().split()
                     # max-len:1000000000000
                     # print('----------bert_max-len:' + str(dict.max_len) + '----------')
-                    if len(tokenizedline) > dict.max_len:
-                        tokenizedline = tokenizedline[:dict.max_len - 1]
-                        tokenizedline.append('[SEP]')
+                    # if len(tokenizedline) > dict.max_len:
+                    #     tokenizedline = tokenizedline[:dict.max_len - 1]
+                    #     tokenizedline.append('[SEP]')
                     words = dict.convert_tokens_to_ids(tokenizedline)
                     nwords = len(words)
                     ids = torch.IntTensor(nwords)
                     for i, word in enumerate(words):
                         ids[i] = word
-                        replaced_consumer(tokenizedline[i], word)
+                        replaced_consumer_from_pretrained(tokenizedline[i], word)
                 elif isinstance(dict, BartTokenizer):
                     line = line.strip()
                     if avoid_tokenize is False:

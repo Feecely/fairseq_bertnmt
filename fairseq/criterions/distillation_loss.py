@@ -83,7 +83,6 @@ class DistillationLossCriterion(FairseqCriterion):
 
     def forward(self, model, sample, reduce=True):
         """Compute the loss for the given sample.
-
         Returns a tuple with three elements:
         1) the loss
         2) the sample size, which is used as the denominator for the gradient
@@ -93,10 +92,13 @@ class DistillationLossCriterion(FairseqCriterion):
         loss, nll_loss = self.compute_loss(model, net_output, sample, reduce=reduce)
 
         # dis: [L, BS, D']; bert: [BS, L', D']
-        distillation_output, bert_output = ret['distillation_out'], ret['bert_encoder_out']['last_hidden_state']
+        distillation_output, bert_output = ret['distillation_out'], ret['bert_encoder_out']
         # [BS, L, D']
         distillation_output = distillation_output.permute(1, 0, 2).contiguous()
+<<<<<<< HEAD
         
+=======
+>>>>>>> origin/master
         if self.kd_level == 'sent-level':
             # [BS, D']
             bert_output = torch.mean(bert_output, dim=1)
@@ -104,15 +106,27 @@ class DistillationLossCriterion(FairseqCriterion):
             distillation_output = torch.mean(distillation_output, dim=1)
             loss_kd = self.MSE_loss(distillation_output, bert_output)
             loss_kd = loss_kd.sum()
+<<<<<<< HEAD
         elif self.kd_level == 'token-level':
             assert distillation_output.shape == bert_output.shape
+=======
+
+        elif self.kd_level == 'token-level':
+            assert distillation_output.shape == bert_output.shape
+            #import pdb; pdb.set_trace()
+>>>>>>> origin/master
             loss_kd = self.MSE_loss(distillation_output, bert_output)
             loss_kd = loss_kd.mean(dim=1).sum()
             # bert_output = torch.mean(bert_output, dim=1)
         else:
             raise NotImplementedError()
+<<<<<<< HEAD
         
         loss = loss * self.alpha  + loss_kd * (1. - self.alpha)
+=======
+
+        loss = loss * self.alpha + loss_kd * (1. - self.alpha)
+>>>>>>> origin/master
 
         sample_size = (
             sample["target"].size(0) if self.sentence_avg else sample["ntokens"]
@@ -120,6 +134,7 @@ class DistillationLossCriterion(FairseqCriterion):
         logging_output = {
             "loss": loss.data,
             "nll_loss": nll_loss.data,
+            "kd_loss": loss_kd.data,
             "ntokens": sample["ntokens"],
             "nsentences": sample["target"].size(0),
             "sample_size": sample_size,
@@ -167,6 +182,7 @@ class DistillationLossCriterion(FairseqCriterion):
         """Aggregate logging outputs from data parallel training."""
         loss_sum = sum(log.get("loss", 0) for log in logging_outputs)
         nll_loss_sum = sum(log.get("nll_loss", 0) for log in logging_outputs)
+        kd_loss_sum = sum(log.get("kd_loss", 0) for log in logging_outputs)
         ntokens = sum(log.get("ntokens", 0) for log in logging_outputs)
         sample_size = sum(log.get("sample_size", 0) for log in logging_outputs)
 
@@ -175,6 +191,9 @@ class DistillationLossCriterion(FairseqCriterion):
         )
         metrics.log_scalar(
             "nll_loss", nll_loss_sum / ntokens / math.log(2), ntokens, round=3
+        )
+        metrics.log_scalar(
+            "kd_loss", kd_loss_sum / ntokens / math.log(2), ntokens, round=3
         )
         metrics.log_derived(
             "ppl", lambda meters: utils.get_perplexity(meters["nll_loss"].avg)

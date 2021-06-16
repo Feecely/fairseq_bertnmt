@@ -2,7 +2,7 @@
 #
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
-
+import copy
 import math
 from typing import Any, Dict, List, Optional, Tuple
 import bert
@@ -35,11 +35,12 @@ from torch import Tensor
 from bert import BertModel, BertTokenizer, BertForMaskedLM
 from transformers import AutoModelForTokenClassification, AutoModelForSequenceClassification, AutoModel
 from transformers import AutoTokenizer, AutoModelWithLMHead
-from transformers import BartForConditionalGeneration, BartTokenizer, BertModel
+from transformers import BartForConditionalGeneration, BartTokenizer, BertModel, BartModel, BartConfig, BertLayer, BertConfig
+
+AAA = 0
 
 DEFAULT_MAX_SOURCE_POSITIONS = 1024
 DEFAULT_MAX_TARGET_POSITIONS = 1024
-
 
 DEFAULT_MIN_PARAMS_TO_WRAP = int(1e8)
 
@@ -88,25 +89,41 @@ class TransformerModel(FairseqEncoderDecoderModel):
             }
 
         return {
-            'transformer.wmt14.en-fr': moses_subword('https://dl.fbaipublicfiles.com/fairseq/models/wmt14.en-fr.joined-dict.transformer.tar.bz2'),
+            'transformer.wmt14.en-fr': moses_subword(
+                'https://dl.fbaipublicfiles.com/fairseq/models/wmt14.en-fr.joined-dict.transformer.tar.bz2'),
             'transformer.wmt16.en-de': 'https://dl.fbaipublicfiles.com/fairseq/models/wmt16.en-de.joined-dict.transformer.tar.bz2',
-            'transformer.wmt18.en-de': moses_subword('https://dl.fbaipublicfiles.com/fairseq/models/wmt18.en-de.ensemble.tar.gz'),
-            'transformer.wmt19.en-de': moses_fastbpe('https://dl.fbaipublicfiles.com/fairseq/models/wmt19.en-de.joined-dict.ensemble.tar.gz'),
-            'transformer.wmt19.en-ru': moses_fastbpe('https://dl.fbaipublicfiles.com/fairseq/models/wmt19.en-ru.ensemble.tar.gz'),
-            'transformer.wmt19.de-en': moses_fastbpe('https://dl.fbaipublicfiles.com/fairseq/models/wmt19.de-en.joined-dict.ensemble.tar.gz'),
-            'transformer.wmt19.ru-en': moses_fastbpe('https://dl.fbaipublicfiles.com/fairseq/models/wmt19.ru-en.ensemble.tar.gz'),
-            'transformer.wmt19.en-de.single_model': moses_fastbpe('https://dl.fbaipublicfiles.com/fairseq/models/wmt19.en-de.joined-dict.single_model.tar.gz'),
-            'transformer.wmt19.en-ru.single_model': moses_fastbpe('https://dl.fbaipublicfiles.com/fairseq/models/wmt19.en-ru.single_model.tar.gz'),
-            'transformer.wmt19.de-en.single_model': moses_fastbpe('https://dl.fbaipublicfiles.com/fairseq/models/wmt19.de-en.joined-dict.single_model.tar.gz'),
-            'transformer.wmt19.ru-en.single_model': moses_fastbpe('https://dl.fbaipublicfiles.com/fairseq/models/wmt19.ru-en.single_model.tar.gz'),
+            'transformer.wmt18.en-de': moses_subword(
+                'https://dl.fbaipublicfiles.com/fairseq/models/wmt18.en-de.ensemble.tar.gz'),
+            'transformer.wmt19.en-de': moses_fastbpe(
+                'https://dl.fbaipublicfiles.com/fairseq/models/wmt19.en-de.joined-dict.ensemble.tar.gz'),
+            'transformer.wmt19.en-ru': moses_fastbpe(
+                'https://dl.fbaipublicfiles.com/fairseq/models/wmt19.en-ru.ensemble.tar.gz'),
+            'transformer.wmt19.de-en': moses_fastbpe(
+                'https://dl.fbaipublicfiles.com/fairseq/models/wmt19.de-en.joined-dict.ensemble.tar.gz'),
+            'transformer.wmt19.ru-en': moses_fastbpe(
+                'https://dl.fbaipublicfiles.com/fairseq/models/wmt19.ru-en.ensemble.tar.gz'),
+            'transformer.wmt19.en-de.single_model': moses_fastbpe(
+                'https://dl.fbaipublicfiles.com/fairseq/models/wmt19.en-de.joined-dict.single_model.tar.gz'),
+            'transformer.wmt19.en-ru.single_model': moses_fastbpe(
+                'https://dl.fbaipublicfiles.com/fairseq/models/wmt19.en-ru.single_model.tar.gz'),
+            'transformer.wmt19.de-en.single_model': moses_fastbpe(
+                'https://dl.fbaipublicfiles.com/fairseq/models/wmt19.de-en.joined-dict.single_model.tar.gz'),
+            'transformer.wmt19.ru-en.single_model': moses_fastbpe(
+                'https://dl.fbaipublicfiles.com/fairseq/models/wmt19.ru-en.single_model.tar.gz'),
             'transformer.wmt20.en-ta': spm('https://dl.fbaipublicfiles.com/fairseq/models/wmt20.en-ta.single.tar.gz'),
-            'transformer.wmt20.en-iu.news': spm('https://dl.fbaipublicfiles.com/fairseq/models/wmt20.en-iu.news.single.tar.gz'),
-            'transformer.wmt20.en-iu.nh': spm('https://dl.fbaipublicfiles.com/fairseq/models/wmt20.en-iu.nh.single.tar.gz'),
+            'transformer.wmt20.en-iu.news': spm(
+                'https://dl.fbaipublicfiles.com/fairseq/models/wmt20.en-iu.news.single.tar.gz'),
+            'transformer.wmt20.en-iu.nh': spm(
+                'https://dl.fbaipublicfiles.com/fairseq/models/wmt20.en-iu.nh.single.tar.gz'),
             'transformer.wmt20.ta-en': spm('https://dl.fbaipublicfiles.com/fairseq/models/wmt20.ta-en.single.tar.gz'),
-            'transformer.wmt20.iu-en.news': spm('https://dl.fbaipublicfiles.com/fairseq/models/wmt20.iu-en.news.single.tar.gz'),
-            'transformer.wmt20.iu-en.nh': spm('https://dl.fbaipublicfiles.com/fairseq/models/wmt20.iu-en.nh.single.tar.gz'),
-            'transformer.flores101.mm100.615M': spm('https://dl.fbaipublicfiles.com/flores101/pretrained_models/flores101_mm100_615M.tar.gz'),
-            'transformer.flores101.mm100.175M': spm('https://dl.fbaipublicfiles.com/flores101/pretrained_models/flores101_mm100_175M.tar.gz'),
+            'transformer.wmt20.iu-en.news': spm(
+                'https://dl.fbaipublicfiles.com/fairseq/models/wmt20.iu-en.news.single.tar.gz'),
+            'transformer.wmt20.iu-en.nh': spm(
+                'https://dl.fbaipublicfiles.com/fairseq/models/wmt20.iu-en.nh.single.tar.gz'),
+            'transformer.flores101.mm100.615M': spm(
+                'https://dl.fbaipublicfiles.com/flores101/pretrained_models/flores101_mm100_615M.tar.gz'),
+            'transformer.flores101.mm100.175M': spm(
+                'https://dl.fbaipublicfiles.com/flores101/pretrained_models/flores101_mm100_175M.tar.gz'),
         }
         # fmt: on
 
@@ -115,15 +132,24 @@ class TransformerModel(FairseqEncoderDecoderModel):
         self.args = args
         self.supports_align_args = True
         self.mask_cls_sep = getattr(args, 'mask_cls_sep', False)
-        self.berttokenizer = BertTokenizer.from_pretrained(args.bert_model_name, do_lower_case=False)
         self.use_bertinput = getattr(args, 'use_bertinput', False)
+        self.use_bartinput = getattr(args, 'use_bartinput', False)
         self.mask_lm = getattr(args, 'mask_lm', False)
         self.extra_data = getattr(args, 'extra_data', False)
         self.text_filling = getattr(args, 'text_filling', False)
         self.bert_ner = getattr(args, 'bert_ner', False)
         self.bert_sst = getattr(args, 'bert_sst', False)
         self.origin_kd = getattr(args, 'origin_kd', False)
+        self.origin_kd_bart = getattr(args, 'origin_kd_bart', False)
+        self.bart_decoder = getattr(args, 'bart_decoder', False)
+        self.bart_decoder_init = getattr(args, 'bart_decoder_init', False)
+        self.bart_decoder_freeze = getattr(args, 'bart_decoder_freeze', False)
+        self.bert_auto_encoder = getattr(args, 'bert_auto_encoder', 0)
+        self.bert_auto_bertencoder = getattr(args, 'bert_auto_bertencoder', 0)
 
+        self.berttokenizer = BertTokenizer.from_pretrained(args.bert_model_name, do_lower_case=False)
+        if self.use_bartinput:
+            self.barttokenizer = BartTokenizer.from_pretrained(args.bart_model_name, do_lower_case=False)
         if self.origin_kd is True:
             model_name = args.bert_model_name
             self.bertmasklm = BertModel.from_pretrained(model_name)
@@ -132,17 +158,42 @@ class TransformerModel(FairseqEncoderDecoderModel):
             if enc_dim != bert_dim:
                 self.transform_fc = nn.Linear(enc_dim, bert_dim)
 
+        if self.origin_kd_bart is True:
+            model_name = args.bart_model_name
+            self.bartmasklm = BartModel.from_pretrained(model_name)
+            bart_dim = self.bartmasklm.config.d_model
+            enc_dim = args.encoder_embed_dim
+            if enc_dim != bart_dim:
+                self.transform_fc = nn.Linear(enc_dim, bart_dim)
+
         if self.mask_lm is True:
             model_name = args.bert_model_name
-            #import pdb; pdb.set_trace()
+            # import pdb; pdb.set_trace()
             self.bertmasklm = BertForMaskedLM.from_pretrained(model_name)  # bertmasklm.cls.predictions.decoder
-            #args.bert_out_dim = self.bertmasklm.bert.hidden_size
+
+            # args.bert_out_dim = self.bertmasklm.bert.hidden_size
 
             self.mask_fc1 = self.bertmasklm.cls
             self.mask_fc1.requires_grad = False
             self.mask_fc2 = nn.Linear(args.encoder_embed_dim, len(self.berttokenizer.vocab))
-            #self.mask_fc2 = nn.Linear(768, len(self.encoder.dictionary))
-            self.loss_fct = nn.CrossEntropyLoss(ignore_index=0, reduction='sum')
+            # self.mask_fc2 = nn.Linear(args.encoder_embed_dim, len(self.encoder.dictionary))
+            self.loss_fct = nn.CrossEntropyLoss(ignore_index=-1, reduction='sum')
+            if self.bert_auto_encoder > 0:
+                self.bert_auto_encoder_layers = nn.ModuleList([])
+                self.bert_auto_encoder_layers.extend(
+                    [self.encoder.build_encoder_layer(args) for i in range(self.bert_auto_encoder)])
+            if self.bert_auto_bertencoder > 0:
+                self.endim2bertdim = nn.Linear(args.encoder_embed_dim, self.bertmasklm.config.hidden_size)
+                self.bertdim2endim = nn.Linear(self.bertmasklm.config.hidden_size, args.encoder_embed_dim)
+                configuration = BertConfig.from_json_file(model_name + '/config.json')
+                # configuration.hidden_size = args.encoder_embed_dim
+                bert_auto_bertencoder_model = BertModel(configuration)
+                self.bert_auto_bertencoder_layers = nn.ModuleList([])
+                self.bert_auto_bertencoder_layers.extend(
+                    [copy.deepcopy(bert_auto_bertencoder_model.encoder.layer[0]) for i in range(self.bert_auto_bertencoder)])
+                del bert_auto_bertencoder_model
+
+
 
         if self.text_filling is True:
             model_name = args.bart_model_name
@@ -150,8 +201,28 @@ class TransformerModel(FairseqEncoderDecoderModel):
             self.bartmasklm = BartForConditionalGeneration.from_pretrained(model_name)
 
             self.bart_mask_fc2 = nn.Linear(args.encoder_embed_dim, self.bart_tokenizer.vocab_size)
-            #self.bart_mask_fc2 = nn.Linear(768, len(self.encoder.dictionary))
-            self.bart_loss_fct = nn.CrossEntropyLoss(ignore_index=-1, reduction='sum')
+            # self.bart_mask_fc2 = nn.Linear(args.encoder_embed_dim, len(self.encoder.dictionary))
+            self.bart_loss_fct = nn.CrossEntropyLoss(ignore_index=1, reduction='sum')
+            if self.bart_decoder:
+                bart_dim = self.bartmasklm.config.d_model
+                enc_dim = args.encoder_embed_dim
+                self.bart_fc = nn.Linear(enc_dim, bart_dim)
+                if self.bart_decoder_init:
+                    configuration = BartConfig.from_json_file(model_name + '/config.json')
+                    tmp_model = BartForConditionalGeneration(configuration)
+                    self.bart_decoder_net = copy.deepcopy(tmp_model.model.decoder)
+                    self.bart_lm_head = copy.deepcopy(tmp_model.lm_head)
+                    del tmp_model
+                else:
+                    self.bart_decoder_net = copy.deepcopy(self.bartmasklm.model.decoder)
+                    self.bart_lm_head = copy.deepcopy(self.bartmasklm.lm_head)
+                if self.bart_decoder_freeze:
+                    for para in self.bart_decoder_net.parameters():
+                        para.requires_grad = False
+                    for para in self.bart_lm_head.parameters():
+                        para.requires_grad = False
+
+
 
         if self.bert_ner is True:
             # TODO: check whether this will work.
@@ -159,9 +230,10 @@ class TransformerModel(FairseqEncoderDecoderModel):
             self.bert_ner_model = AutoModelForTokenClassification.from_pretrained(model_name)
             self.ner_fc = self.bert_ner_model.classifier
             self.ner_fc.requires_grad = False
-            #import pdb; pdb.set_trace()
+            # import pdb; pdb.set_trace()
             self.encoder_dropout = nn.Dropout(self.bert_ner_model.config.hidden_dropout_prob)
-            self.encoder_classifier = nn.Linear(self.bert_ner_model.config.hidden_size, self.bert_ner_model.config.num_labels)
+            self.encoder_classifier = nn.Linear(self.bert_ner_model.config.hidden_size,
+                                                self.bert_ner_model.config.num_labels)
 
         if self.bert_sst is True:
             model_name = args.bert_model_name[:-3] + 'sst'
@@ -177,6 +249,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         # self.mask_lm = getattr(args, 'mask_lm', False)
         # self.bert_ner = getattr(args, 'bert_ner', False)
         # self.bert_sst = getattr(args, 'bert_sst', False)
+
     @staticmethod
     def add_args(parser):
         """Add model-specific arguments to the parser."""
@@ -275,13 +348,15 @@ class TransformerModel(FairseqEncoderDecoderModel):
                 '--offload-activations are passed.'
             )
         )
-        #parser.add_argument('--finetune-bert', action='store_true', help='...')
+        # parser.add_argument('--finetune-bert', action='store_true', help='...')
         parser.add_argument('--use-bertinput', action='store_true', help='...')
+        parser.add_argument('--use-bartinput', action='store_true', help='...')
         parser.add_argument('--mask-lm', action='store_true', help='...')
         parser.add_argument('--bert-ner', action='store_true', help='...')
         parser.add_argument('--bert-sst', action='store_true', help='...')
 
         parser.add_argument('--origin-kd', action='store_true', help='...')
+        parser.add_argument('--origin-kd-bart', action='store_true', help='...')
         parser.add_argument('--kd-alpha', default=0.9, type=float)
         parser.add_argument('--extra-data', action='store_true', help='...')
         parser.add_argument('--denoising', action='store_true', help='...')
@@ -289,6 +364,13 @@ class TransformerModel(FairseqEncoderDecoderModel):
         parser.add_argument('--bert-model-name', default='bert-base-uncased', type=str)
         parser.add_argument('--bart-model-name', default='bart-base-uncased', type=str)
         parser.add_argument('--text-filling', action='store_true', help='...')
+        parser.add_argument('--bart-decoder', action='store_true', help='...')
+        parser.add_argument('--bart-decoder-init', action='store_true', help='...')
+        parser.add_argument('--bart-decoder-freeze', action='store_true', help='...')
+        parser.add_argument('--bert-auto-encoder', default=0, type=int)
+        parser.add_argument('--bert-auto-bertencoder', default=0, type=int)
+        # parser.add_argument('--bart-auto-encoder', default=0, type=int)
+
         # fmt: on
 
     @classmethod
@@ -307,24 +389,28 @@ class TransformerModel(FairseqEncoderDecoderModel):
             args.max_source_positions = DEFAULT_MAX_SOURCE_POSITIONS
         if getattr(args, "max_target_positions", None) is None:
             args.max_target_positions = DEFAULT_MAX_TARGET_POSITIONS
-
         src_dict, tgt_dict = task.source_dictionary, task.target_dictionary
+
 
         if len(task.datasets) > 0:
             src_berttokenizer = next(iter(task.datasets.values())).berttokenizer
         else:
             src_berttokenizer = BertTokenizer.from_pretrained(args.bert_model_name, do_lower_case=False)
-
+        if getattr(args, 'use_bartinput', False):
+            if len(task.datasets) > 0:
+                src_barttokenizer = next(iter(task.datasets.values())).barttokenizer
+            else:
+                src_barttokenizer = BartTokenizer.from_pretrained(args.bart_model_name, do_lower_case=False)
 
         if args.share_all_embeddings:
-            if src_dict != tgt_dict:
-                raise ValueError("--share-all-embeddings requires a joined dictionary")
+            # if src_dict != tgt_dict:
+            #     raise ValueError("--share-all-embeddings requires a joined dictionary")
             if args.encoder_embed_dim != args.decoder_embed_dim:
                 raise ValueError(
                     "--share-all-embeddings requires --encoder-embed-dim to match --decoder-embed-dim"
                 )
             if args.decoder_embed_path and (
-                args.decoder_embed_path != args.encoder_embed_path
+                    args.decoder_embed_path != args.encoder_embed_path
             ):
                 raise ValueError(
                     "--share-all-embeddings not compatible with --decoder-embed-path"
@@ -337,6 +423,8 @@ class TransformerModel(FairseqEncoderDecoderModel):
         else:
             if getattr(args, 'use_bertinput', False):
                 src_dict = src_berttokenizer
+            if getattr(args, 'use_bartinput', False):
+                src_dict = src_barttokenizer
             encoder_embed_tokens = cls.build_embedding(
                 args, src_dict, args.encoder_embed_dim, args.encoder_embed_path
             )
@@ -359,7 +447,10 @@ class TransformerModel(FairseqEncoderDecoderModel):
     @classmethod
     def build_embedding(cls, args, dictionary, embed_dim, path=None):
         num_embeddings = len(dictionary)
-        padding_idx = dictionary.pad()
+        if hasattr(dictionary, 'pad_token_id'):
+            padding_idx = dictionary.pad_token_id
+        else:
+            padding_idx = dictionary.pad()
 
         emb = Embedding(num_embeddings, embed_dim, padding_idx)
         # if provided, load from preloaded dictionaries
@@ -384,27 +475,27 @@ class TransformerModel(FairseqEncoderDecoderModel):
     # TorchScript doesn't support optional arguments with variable length (**kwargs).
     # Current workaround is to add union of all arguments in child classes.
     def forward(
-        self,
-        src_tokens,
-        src_lengths,
-        prev_output_tokens,
-        bert_input=None,
-        BERT_encoder_input=None,
-        BERT_encoder_output=None,
-        BART_encoder_input=None,
-        BART_encoder_output=None,
-        BERT_bert_input=None,
-        BERT_bert_output=None,
-        BART_bart_input=None,
-        BART_bart_output=None,
-        BERT_bert_labels=None,
-        BERT_encoder_mapping=None,
-        BART_encoder_mapping=None,
-        extra_data=None,
-        return_all_hiddens: bool = True,
-        features_only: bool = False,
-        alignment_layer: Optional[int] = None,
-        alignment_heads: Optional[int] = None,
+            self,
+            src_tokens,
+            src_lengths,
+            prev_output_tokens,
+            bert_input=None,
+            BERT_encoder_input=None,
+            BERT_encoder_output=None,
+            BART_encoder_input=None,
+            BART_encoder_output=None,
+            BERT_bert_input=None,
+            BERT_bert_output=None,
+            BART_bart_input=None,
+            BART_bart_output=None,
+            BERT_bert_labels=None,
+            BERT_encoder_mapping=None,
+            BART_encoder_mapping=None,
+            extra_data=None,
+            return_all_hiddens: bool = True,
+            features_only: bool = False,
+            alignment_layer: Optional[int] = None,
+            alignment_heads: Optional[int] = None,
     ):
         """
         Run the forward pass for an encoder-decoder model.
@@ -412,32 +503,71 @@ class TransformerModel(FairseqEncoderDecoderModel):
         Copied from the base class, but without ``**kwargs``,
         which are not supported by TorchScript.
         """
-        bert_encoder_padding_mask = bert_input.eq(self.berttokenizer.pad())
+        if bert_input is not None:
+            bert_encoder_padding_mask = bert_input.eq(self.berttokenizer.pad())
         if self.mask_cls_sep:
             bert_encoder_padding_mask += bert_input.eq(self.berttokenizer.cls())
             bert_encoder_padding_mask += bert_input.eq(self.berttokenizer.sep())
         if self.use_bertinput:
             bert_src_lengths = (bert_input != self.berttokenizer.pad()).sum(-1)
             encoder_out = self.encoder(bert_input, src_lengths=bert_src_lengths)
+        elif self.use_bartinput:
+            bart_src_lengths = (BART_bart_output != self.barttokenizer.pad_token_id).sum(-1)
+            encoder_out = self.encoder(BART_bart_output, src_lengths=bart_src_lengths)
         else:
             encoder_out = self.encoder(
                 src_tokens, src_lengths=src_lengths, return_all_hiddens=return_all_hiddens
             )
         if self.mask_lm:
-            if BERT_encoder_input is None or BERT_encoder_output is None:
-                BERT_encoder_input, BERT_encoder_output = BERT_bert_input, BERT_encoder_output
+            if BERT_encoder_input is None or BERT_encoder_output is None or self.use_bertinput:
+                BERT_encoder_input, BERT_encoder_output = BERT_bert_input, BERT_bert_output
             mask_src_lengths = (BERT_encoder_input != self.encoder.dictionary.pad_index).sum(-1)
             mask_encoder_out = self.encoder(BERT_encoder_input, mask_src_lengths)
-            mask_encoder_out = mask_encoder_out['encoder_out'][-1].permute(1, 0, 2).contiguous() # B * T * D
-            mask_encoder_out = self.mask_fc2(mask_encoder_out)
+            if self.bert_auto_encoder:
+                mask_auto_encoder_out = mask_encoder_out['encoder_out'][-1]
+                for layer in self.bert_auto_encoder_layers:
+                    mask_auto_encoder_out = layer(mask_auto_encoder_out, encoder_padding_mask=mask_encoder_out['encoder_padding_mask'][0])
+                mask_encoder_out['encoder_out'][-1] = mask_auto_encoder_out
+                mask_encoder_out = mask_encoder_out['encoder_out'][-1].permute(1, 0, 2).contiguous()  # B * T * D
+                mask_encoder_out = self.mask_fc2(mask_encoder_out)
+            elif self.bert_auto_bertencoder:
+                mask_auto_encoder_out = mask_encoder_out['encoder_out'][-1].permute(1, 0, 2).contiguous()
+                mask_auto_encoder_out = self.endim2bertdim(mask_auto_encoder_out)
+                # import pdb; pdb.set_trace()
+                for layer in self.bert_auto_bertencoder_layers:
+                    #TODO:attention mask
+                    mask_auto_encoder_out = layer(mask_auto_encoder_out)
+                mask_auto_encoder_out = self.bertdim2endim(mask_auto_encoder_out[0])
+                mask_encoder_out = self.mask_fc2(mask_auto_encoder_out)
+            else:
+                mask_encoder_out = mask_encoder_out['encoder_out'][-1].permute(1, 0, 2).contiguous()  # B * T * D
+                mask_encoder_out = self.mask_fc2(mask_encoder_out)
 
             BERT_encoder_label = (BERT_encoder_input != BERT_encoder_output).int()
             BERT_encoder_label = torch.mul(BERT_encoder_label, BERT_encoder_output)
-            masked_encoder_loss = self.loss_fct(mask_encoder_out.view(-1, len(self.berttokenizer.vocab)),
-                                                BERT_encoder_label.view(-1))
+            if self.mask_lm and self.text_filling:
+                masked_encoder_loss = torch.tensor([0]).cuda()
+            else:
+                masked_encoder_loss = self.loss_fct(mask_encoder_out.view(-1, len(self.berttokenizer.vocab)),
+                                                    BERT_bert_labels.view(-1))
+            # masked_encoder_loss = self.loss_fct(mask_encoder_out.view(-1, len(self.encoder.dictionary)),
+            #                                     BERT_encoder_label.view(-1))
+            bert_mask_encoder_padding_mask = BERT_bert_output.eq(self.berttokenizer.pad())
+            if self.mask_cls_sep:
+                bert_mask_encoder_padding_mask += BERT_bert_output.eq(self.berttokenizer.cls())
+                bert_mask_encoder_padding_mask += BERT_bert_output.eq(self.berttokenizer.sep())
+
             with torch.no_grad():
                 _, mask_bert_out = self.bertmasklm(BERT_bert_input, attention_mask=~bert_encoder_padding_mask, masked_lm_labels=BERT_bert_labels)
-            mask_loss = masked_encoder_loss #+ mask_bert_loss
+                # import pdb; pdb.set_trace()
+                # if self.extra_data:
+                #     mask_bert_out = self.bertmasklm(BERT_bert_input, attention_mask=~bert_mask_encoder_padding_mask)
+                # else:
+                #     mask_bert_out = self.bertmasklm(BERT_bert_input, attention_mask=~bert_encoder_padding_mask)
+                # mask_bert_out = self.bertmasklm(BERT_bert_input, attention_mask=~bert_mask_encoder_padding_mask)
+                mask_bert_loss = self.loss_fct(mask_bert_out.view(-1, len(self.encoder.dictionary)),
+                                                    BERT_bert_output.view(-1))
+            mask_loss = mask_bert_loss  # + masked_encoder_loss
 
         if self.bert_ner:
             with torch.no_grad():
@@ -459,23 +589,50 @@ class TransformerModel(FairseqEncoderDecoderModel):
             sst_encoder_out = self.encoder_classifier(sst_encoder_out)
 
         if self.text_filling is True:
-            bart_encoder_padding_mask = BART_bart_input.eq(
-                self.bart_tokenizer.convert_tokens_to_ids(self.bart_tokenizer.pad_token))
-            #import pdb; pdb.set_trace()
-            fill_src_lengths = (BART_encoder_input != self.encoder.dictionary.pad_index).sum(-1)
-            fill_encoder_out = self.encoder(BART_encoder_input, fill_src_lengths)
-            fill_encoder_out = fill_encoder_out['encoder_out'][-1].permute(1, 0, 2).contiguous()
-            fill_encoder_out = self.bart_mask_fc2(fill_encoder_out)
-            fill_encoder_loss = self.bart_loss_fct(fill_encoder_out.view(-1, self.bart_tokenizer.vocab_size),
-                                                   BART_encoder_output.view(-1))
+            #TODO:encoder_out is not none, difference between padding_mask
+            bart_encoder_padding_mask = BART_bart_output.eq(self.bart_tokenizer.pad_token_id)
+            if BART_encoder_input is None or BART_encoder_output is None or self.use_bartinput:
+                    BART_encoder_input, BART_encoder_output = BART_bart_input, BART_bart_output
+                    assert BART_encoder_input.shape == BART_encoder_output.shape
+            if hasattr(self.encoder.dictionary, 'pad_index'):
+                fill_src_lengths = (BART_encoder_input != self.encoder.dictionary.pad_index).sum(-1)
+            else:
+                fill_src_lengths = (BART_encoder_input != self.encoder.dictionary.pad_token_id).sum(-1)
+
+            if self.bart_decoder:
+                fill_encoder_out = self.encoder(BART_encoder_input, fill_src_lengths)['encoder_out'][-1]
+                fill_encoder_out = self.bart_fc(fill_encoder_out)
+                if self.bart_decoder_freeze:
+                    with torch.no_grad():
+                        fill_encoder_out = self.bart_decoder_net(input_ids=BART_encoder_output,
+                                                                attention_mask=~bart_encoder_padding_mask,
+                                                                encoder_hidden_states=fill_encoder_out)
+                        fill_encoder_out = self.bart_lm_head(fill_encoder_out.last_hidden_state)
+                else:
+                    fill_encoder_out = self.bart_decoder_net(input_ids=BART_encoder_output, attention_mask=~bart_encoder_padding_mask, encoder_hidden_states=fill_encoder_out)
+                    fill_encoder_out = self.bart_lm_head(fill_encoder_out.last_hidden_state)
+            else:
+                fill_encoder_out = self.encoder(BART_encoder_input, fill_src_lengths)
+                fill_encoder_out = fill_encoder_out['encoder_out'][-1].permute(1, 0, 2).contiguous()
+                fill_encoder_out = self.bart_mask_fc2(fill_encoder_out)
+
+            # if self.mask_lm and self.text_filling:
+            #     fill_encoder_loss = torch.tensor([0]).cuda()
+            # else:
+            #     fill_encoder_loss = self.bart_loss_fct(fill_encoder_out.view(-1, self.bart_tokenizer.vocab_size),
+            #                                            BART_bart_output.view(-1))
+            # fill_encoder_loss = self.bart_loss_fct(fill_encoder_out.view(-1, len(self.encoder.dictionary)),
+            #                                        BART_encoder_output.view(-1))
 
             with torch.no_grad():
-                fill_bart_out = self.bartmasklm(BART_bart_input, attention_mask=~bart_encoder_padding_mask)[0]
-                _ = self.bart_loss_fct(fill_bart_out.view(-1, self.bart_tokenizer.vocab_size),
-                                                    BART_bart_output.view(-1))
-            fill_loss = fill_encoder_loss # + fill_bart_loss
-
-
+                # fill_bart_out = self.bartmasklm(BART_bart_input, attention_mask=~bart_encoder_padding_mask)['logits']
+                # fill_bart_out = self.bartmasklm(input_ids=BART_bart_input, attention_mask=~bart_encoder_padding_mask, decoder_input_ids=BART_bart_output, decoder_attention_mask=~bart_encoder_padding_mask)['logits']
+                fill_bart_out = self.bartmasklm(input_ids=BART_bart_input, attention_mask=~bart_encoder_padding_mask, labels=BART_bart_output)['logits']
+                fill_loss = self.bart_loss_fct(fill_bart_out.view(-1, self.bart_tokenizer.vocab_size),
+                                       BART_bart_output.view(-1))
+            # print(self.bartmasklm.lm_head.state_dict())
+            # fill_loss = fill_encoder_loss  # + fill_bart_loss
+            # fill_loss = torch.tensor([0]).cuda()
         decoder_out = self.decoder(
             prev_output_tokens,
             encoder_out=encoder_out,
@@ -494,19 +651,35 @@ class TransformerModel(FairseqEncoderDecoderModel):
                 ret['distillation_out'] = encoder_out
             with torch.no_grad():
                 # hidden or log-probs?
-                bert_encoder_out = self.bertmasklm(BERT_bert_input, attention_mask=~bert_encoder_padding_mask)
-            ret['bert_encoder_out'] = bert_encoder_out
+                # bert_encoder_out = self.bertmasklm(BERT_bert_input, attention_mask=~bert_encoder_padding_mask)
+                bert_encoder_out = self.bertmasklm(bert_input, attention_mask=~bert_encoder_padding_mask)
+            ret['bert_encoder_out'] = bert_encoder_out['last_hidden_state']
+        if self.origin_kd_bart:
+            if getattr(self, "transform_fc", None) is not None:
+                ret['distillation_out'] = self.transform_fc(encoder_out['encoder_out'][0])
+            else:
+                ret['distillation_out'] = encoder_out
+            with torch.no_grad():
+                # hidden or log-probs?
+                # bert_encoder_out = self.bertmasklm(BERT_bert_input, attention_mask=~bert_encoder_padding_mask)
+                bart_encoder_padding_mask = BART_bart_output.eq(self.barttokenizer.pad_token_id)
+                bert_encoder_out = self.bartmasklm(BART_bart_output, attention_mask=~bart_encoder_padding_mask)
+            ret['bert_encoder_out'] = bert_encoder_out['encoder_last_hidden_state']
+
         if self.mask_lm:
             ret['mask_bert_out'] = mask_bert_out
             ret['mask_encoder_out'] = mask_encoder_out
             ret['mask_loss'] = mask_loss
+            ret['BERT_bert_labels'] = BERT_bert_labels
             ret['BERT_encoder_mapping'] = BERT_encoder_mapping
+            ret['bert_padding_mask'] = bert_mask_encoder_padding_mask
 
         if self.text_filling:
             ret['fill_bart_out'] = fill_bart_out
             ret['fill_encoder_out'] = fill_encoder_out
             ret['fill_loss'] = fill_loss
             ret['BART_encoder_mapping'] = BART_encoder_mapping
+            ret['bart_padding_mask'] = bart_encoder_padding_mask
 
         if self.bert_ner:
             ret['ner_bert_out'] = ner_bert_out
@@ -523,10 +696,10 @@ class TransformerModel(FairseqEncoderDecoderModel):
     # helper function in the Base Class.
     @torch.jit.export
     def get_normalized_probs(
-        self,
-        net_output: Tuple[Tensor, Optional[Dict[str, List[Optional[Tensor]]]]],
-        log_probs: bool,
-        sample: Optional[Dict[str, Tensor]] = None,
+            self,
+            net_output: Tuple[Tensor, Optional[Dict[str, List[Optional[Tensor]]]]],
+            log_probs: bool,
+            sample: Optional[Dict[str, Tensor]] = None,
     ):
         """Get normalized probabilities (or log probs) from a net's output."""
         return self.get_normalized_probs_scriptable(net_output, log_probs, sample)
@@ -616,7 +789,7 @@ class TransformerEncoder(FairseqEncoder):
         return layer
 
     def forward_embedding(
-        self, src_tokens, token_embedding: Optional[torch.Tensor] = None
+            self, src_tokens, token_embedding: Optional[torch.Tensor] = None
     ):
         # embed tokens and positions
         if token_embedding is None:
@@ -632,11 +805,11 @@ class TransformerEncoder(FairseqEncoder):
         return x, embed
 
     def forward(
-        self,
-        src_tokens,
-        src_lengths: Optional[torch.Tensor] = None,
-        return_all_hiddens: bool = False,
-        token_embeddings: Optional[torch.Tensor] = None,
+            self,
+            src_tokens,
+            src_lengths: Optional[torch.Tensor] = None,
+            return_all_hiddens: bool = False,
+            token_embeddings: Optional[torch.Tensor] = None,
     ):
         """
         Args:
@@ -671,11 +844,11 @@ class TransformerEncoder(FairseqEncoder):
     # Current workaround is to add a helper function with different name and
     # call the helper function from scriptable Subclass.
     def forward_scriptable(
-        self,
-        src_tokens,
-        src_lengths: Optional[torch.Tensor] = None,
-        return_all_hiddens: bool = False,
-        token_embeddings: Optional[torch.Tensor] = None,
+            self,
+            src_tokens,
+            src_lengths: Optional[torch.Tensor] = None,
+            return_all_hiddens: bool = False,
+            token_embeddings: Optional[torch.Tensor] = None,
     ):
         """
         Args:
@@ -703,7 +876,7 @@ class TransformerEncoder(FairseqEncoder):
         # compute padding mask
         encoder_padding_mask = src_tokens.eq(self.padding_idx)
         has_pads = (src_tokens.device.type == "xla" or encoder_padding_mask.any())
-
+        # occur error
         x, encoder_embedding = self.forward_embedding(src_tokens, token_embeddings)
 
         # account for padding while computing the representation
@@ -841,12 +1014,12 @@ class TransformerDecoder(FairseqIncrementalDecoder):
     """
 
     def __init__(
-        self,
-        args,
-        dictionary,
-        embed_tokens,
-        no_encoder_attn=False,
-        output_projection=None,
+            self,
+            args,
+            dictionary,
+            embed_tokens,
+            no_encoder_attn=False,
+            output_projection=None,
     ):
         self.args = args
         super().__init__(dictionary)
@@ -916,7 +1089,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         self.num_layers = len(self.layers)
 
         if args.decoder_normalize_before and not getattr(
-            args, "no_decoder_final_norm", False
+                args, "no_decoder_final_norm", False
         ):
             self.layer_norm = LayerNorm(embed_dim)
         else:
@@ -960,8 +1133,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
             )
         num_base_layers = getattr(args, "base_layers", 0)
         for i in range(num_base_layers):
-            self.layers.insert(((i+1) * args.decoder_layers) // (num_base_layers + 1), BaseLayer(args))
-
+            self.layers.insert(((i + 1) * args.decoder_layers) // (num_base_layers + 1), BaseLayer(args))
 
     def build_decoder_layer(self, args, no_encoder_attn=False):
         layer = TransformerDecoderLayer(args, no_encoder_attn)
@@ -979,16 +1151,16 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         return layer
 
     def forward(
-        self,
-        prev_output_tokens,
-        encoder_out: Optional[Dict[str, List[Tensor]]] = None,
-        incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
-        features_only: bool = False,
-        full_context_alignment: bool = False,
-        alignment_layer: Optional[int] = None,
-        alignment_heads: Optional[int] = None,
-        src_lengths: Optional[Any] = None,
-        return_all_hiddens: bool = False,
+            self,
+            prev_output_tokens,
+            encoder_out: Optional[Dict[str, List[Tensor]]] = None,
+            incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
+            features_only: bool = False,
+            full_context_alignment: bool = False,
+            alignment_layer: Optional[int] = None,
+            alignment_heads: Optional[int] = None,
+            src_lengths: Optional[Any] = None,
+            return_all_hiddens: bool = False,
     ):
         """
         Args:
@@ -1023,13 +1195,13 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         return x, extra
 
     def extract_features(
-        self,
-        prev_output_tokens,
-        encoder_out: Optional[Dict[str, List[Tensor]]],
-        incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
-        full_context_alignment: bool = False,
-        alignment_layer: Optional[int] = None,
-        alignment_heads: Optional[int] = None,
+            self,
+            prev_output_tokens,
+            encoder_out: Optional[Dict[str, List[Tensor]]],
+            incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
+            full_context_alignment: bool = False,
+            alignment_layer: Optional[int] = None,
+            alignment_heads: Optional[int] = None,
     ):
         return self.extract_features_scriptable(
             prev_output_tokens,
@@ -1047,13 +1219,13 @@ class TransformerDecoder(FairseqIncrementalDecoder):
     """
 
     def extract_features_scriptable(
-        self,
-        prev_output_tokens,
-        encoder_out: Optional[Dict[str, List[Tensor]]],
-        incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
-        full_context_alignment: bool = False,
-        alignment_layer: Optional[int] = None,
-        alignment_heads: Optional[int] = None,
+            self,
+            prev_output_tokens,
+            encoder_out: Optional[Dict[str, List[Tensor]]],
+            incremental_state: Optional[Dict[str, Dict[str, Optional[Tensor]]]] = None,
+            full_context_alignment: bool = False,
+            alignment_layer: Optional[int] = None,
+            alignment_heads: Optional[int] = None,
     ):
         """
         Similar to *forward* but only return features.
@@ -1083,7 +1255,7 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         if encoder_out is not None and len(encoder_out["encoder_out"]) > 0:
             enc = encoder_out["encoder_out"][0]
             assert (
-                enc.size()[1] == bs
+                    enc.size()[1] == bs
             ), f"Expected enc.shape == (t, {bs}, c) got {enc.shape}"
         if encoder_out is not None and len(encoder_out["encoder_padding_mask"]) > 0:
             padding_mask = encoder_out["encoder_padding_mask"][0]
@@ -1183,9 +1355,9 @@ class TransformerDecoder(FairseqIncrementalDecoder):
         dim = tensor.size(0)
         # self._future_mask.device != tensor.device is not working in TorchScript. This is a workaround.
         if (
-            self._future_mask.size(0) == 0
-            or (not self._future_mask.device == tensor.device)
-            or self._future_mask.size(0) < dim
+                self._future_mask.size(0) == 0
+                or (not self._future_mask.device == tensor.device)
+                or self._future_mask.size(0) < dim
         ):
             self._future_mask = torch.triu(
                 utils.fill_with_neg_inf(torch.zeros([dim, dim])), 1
@@ -1340,6 +1512,7 @@ def transformer_iwslt_de_en(args):
 def transformer_wmt_en_de(args):
     base_architecture(args)
 
+
 @register_model_architecture("transformer", "transformer_wmt_en_de_768")
 def transformer_wmt_en_de(args):
     args.encoder_embed_dim = getattr(args, "encoder_embed_dim", 768)
@@ -1349,8 +1522,9 @@ def transformer_wmt_en_de(args):
     args.decoder_embed_dim = getattr(args, "decoder_embed_dim", 768)
     args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", 3072)
     args.decoder_attention_heads = getattr(args, "decoder_attention_heads", 8)
-    #args.dropout = getattr(args, "dropout", 0.3)
+    # args.dropout = getattr(args, "dropout", 0.3)
     base_architecture(args)
+
 
 @register_model_architecture("transformer", "transformer_wmt_en_de_1024")
 def transformer_wmt_en_de(args):
@@ -1361,8 +1535,9 @@ def transformer_wmt_en_de(args):
     args.decoder_embed_dim = getattr(args, "decoder_embed_dim", 1024)
     args.decoder_ffn_embed_dim = getattr(args, "decoder_ffn_embed_dim", 4096)
     args.decoder_attention_heads = getattr(args, "decoder_attention_heads", 8)
-    #args.dropout = getattr(args, "dropout", 0.3)
+    # args.dropout = getattr(args, "dropout", 0.3)
     base_architecture(args)
+
 
 # parameters used in the "Attention Is All You Need" paper (Vaswani et al., 2017)
 @register_model_architecture("transformer", "transformer_vaswani_wmt_en_de_big")

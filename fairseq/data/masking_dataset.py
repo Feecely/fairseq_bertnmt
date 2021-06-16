@@ -37,7 +37,6 @@ class MaskingDataset(FairseqDataset):
         self.input_feeding = input_feeding
         self.remove_eos_from_source = remove_eos_from_source
         self.append_eos_to_target = append_eos_to_target
-
         # init pad_dict
         if hasattr(self.src, "pad_dict"):
             self.pad_dict = self.src.pad_dict
@@ -63,24 +62,24 @@ class MaskingDataset(FairseqDataset):
                 'source': src_item,
                 'id': index,
             }
+        ret['BERT-bert-output'] = self.srcbert[index].clone()
 
         src_bert_item = self.srcbert[index]
-        bert_mask_item, bert_mask_labels = self.build_mask_input(self.srcbert[index], self.berttokenizer, mlm_probability=0.15)
-        
+        bert_mask_item, bert_mask_labels = self.build_mask_input(src_bert_item, self.berttokenizer, mlm_probability=0.15)
         if self.map_dataset is not None:
             bert_mapping = self.map_dataset[index]
-            src_mask_item, bert_mapping = self.build_encoder_mask_input(src_item, bert_mapping, src_bert_item, bert_mask_item)
+            src_mask_item, bert_mapping = self.build_encoder_mask_input(src_item, bert_mapping, ret['BERT-bert-output'], bert_mask_item)
         else:
             # use bert input.
             src_mask_item = None
             bert_mapping = None
-            
+
         if self.remove_eos_from_source:
             eos = self.src_dict.eos()
             if self.src[index][-1] == eos:
                 # TODO: check whether other inputs also need remove eos.
                 src_item = self.src[index][:-1]
-        
+
         # Name format: {TASK}-{module}-{input/output}
         # TODO: convert BERT encoder input
         if src_mask_item is not None:
@@ -88,11 +87,12 @@ class MaskingDataset(FairseqDataset):
             ret['BERT-encoder-input'] = src_mask_item
         else:
             ret['BERT-encoder-input'] = bert_mask_item
-            ret['BERT-encoder-output'] = src_bert_item
+            # ret['BERT-encoder-output'] = src_bert_item
+            ret['BERT-encoder-output'] = ret['BERT-bert-output']
         assert ret['BERT-encoder-input'].shape == ret['BERT-encoder-output'].shape
 
         ret['BERT-bert-input'] = bert_mask_item
-        ret['BERT-bert-output'] = src_bert_item
+        # ret['BERT-bert-output'] = src_bert_item
         ret['BERT-bert-labels'] = bert_mask_labels
         if bert_mapping is not None:
             ret['BERT-encoder-mapping'] = bert_mapping

@@ -27,8 +27,8 @@ LC_ALL=en_US.UTF-8 python /mnt/yardcephfs/mmyard/g_wxg_td_prc/mt/v_xyvhuang/fair
 --dropout 0.3 --max-tokens 1000 --lr-scheduler inverse_sqrt --weight-decay 0.0001 \
 --criterion new_mask_fill_distillation_loss --max-update 100000 --warmup-updates 4000 --warmup-init-lr '1e-07' \
 --adam-betas '(0.9,0.98)' --save-dir $SAVEDIR $warmup --masking --denoising --disable-validation \
---use-bertinput --kd-alpha 0.9 --label-smoothing 0.1 --input-mapping --mask-lm --text-filling \
---update-freq 1 --bert-model-name /mnt/yardcephfs/mmyard/g_wxg_td_prc/mt/v_xyvhuang/data/bert-base-sst \
+--kd-alpha 0.9 --label-smoothing 0.1 --input-mapping --mask-lm --text-filling --left-pad-source \
+--update-freq 1 --bert-model-name /mnt/yardcephfs/mmyard/g_wxg_td_prc/mt/v_xyvhuang/data/bert-base-cased-new \
 --bart-model-name /mnt/yardcephfs/mmyard/g_wxg_td_prc/mt/v_xyvhuang/data/bart-base
 #|& tee -a $SAVEDIR/training.log
 #--fp16

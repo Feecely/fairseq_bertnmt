@@ -33,6 +33,8 @@ from .lru_cache_dataset import LRUCacheDataset
 from .mask_tokens_dataset import MaskTokensDataset
 from .masking_dataset import MaskingDataset
 from .denoising_bart_dataset import DenoisingBartDataset
+from .masking_extra_dataset import MaskingExtraDataset
+from .denoising_bart_extra_dataset import DenoisingBartExtraDataset
 from .monolingual_dataset import MonolingualDataset
 from .multi_corpus_sampled_dataset import MultiCorpusSampledDataset
 from .nested_dictionary_dataset import NestedDictionaryDataset
@@ -87,6 +89,8 @@ __all__ = [
     "GroupedIterator",
     "DenoisingBartDataset",
     "MaskingDataset",
+    "DenoisingBartExtraDataset",
+    "MaskingExtraDataset",
     "IdDataset",
     "IndexedCachedDataset",
     "IndexedDataset",

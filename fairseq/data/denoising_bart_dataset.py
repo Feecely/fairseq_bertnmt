@@ -34,7 +34,10 @@ class DenoisingBartDataset(FairseqDataset):
         self.input_feeding = input_feeding
         self.remove_eos_from_source = remove_eos_from_source
         self.append_eos_to_target = append_eos_to_target
-        self.mask_idx = self.src_dict.index('<mask>')
+        self.mask_idx = self.barttokenizer.convert_tokens_to_ids('<mask>')
+        # self.mask_idx = self.src_dict.index('<mask>')
+        self.encoder_mask_idx = self.src_dict.index('<mask>')
+        # self.mask_idx = self.barttokenizer._convert_token_to_id('<mask>')
         self.mask_whole_word = mask_whole_words
         self.mask_ratio = 0.3
         self.random_ratio = 0.1
@@ -183,7 +186,8 @@ class DenoisingBartDataset(FairseqDataset):
                 unchange_bool = ~(mask_align + random_align)
  
                 # convert indices and length to source_item scale.
-                mask_tensor = torch.zeros_like(result).fill_(self.mask_idx)
+                # mask_tensor = torch.zeros_like(result).fill_(self.mask_idx)
+                mask_tensor = torch.zeros_like(result).fill_(self.encoder_mask_idx)
                 # init random tensor
                 random_tensor = torch.zeros_like(result)
                 
