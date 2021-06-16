@@ -175,25 +175,31 @@ class TransformerModel(FairseqEncoderDecoderModel):
 
             self.mask_fc1 = self.bertmasklm.cls
             self.mask_fc1.requires_grad = False
-            self.mask_fc2 = nn.Linear(args.encoder_embed_dim, len(self.berttokenizer.vocab))
+            
             # self.mask_fc2 = nn.Linear(args.encoder_embed_dim, len(self.encoder.dictionary))
             self.loss_fct = nn.CrossEntropyLoss(ignore_index=-1, reduction='sum')
+            
+            fc2_in_dim = args.encoder_embed_dim
+            # choose between MT encoder layers and bert encoder layers
+            assert self.bert_auto_encoder * self.bert_auto_bertencoder == 0
             if self.bert_auto_encoder > 0:
                 self.bert_auto_encoder_layers = nn.ModuleList([])
                 self.bert_auto_encoder_layers.extend(
                     [self.encoder.build_encoder_layer(args) for i in range(self.bert_auto_encoder)])
-            if self.bert_auto_bertencoder > 0:
+                 
+            elif self.bert_auto_bertencoder > 0:
                 self.endim2bertdim = nn.Linear(args.encoder_embed_dim, self.bertmasklm.config.hidden_size)
-                self.bertdim2endim = nn.Linear(self.bertmasklm.config.hidden_size, args.encoder_embed_dim)
                 configuration = BertConfig.from_json_file(model_name + '/config.json')
-                # configuration.hidden_size = args.encoder_embed_dim
+                # change number of layers
+                configuration.num_hidden_layers = self.bert_auto_bertencoder
                 bert_auto_bertencoder_model = BertModel(configuration)
                 self.bert_auto_bertencoder_layers = nn.ModuleList([])
                 self.bert_auto_bertencoder_layers.extend(
-                    [copy.deepcopy(bert_auto_bertencoder_model.encoder.layer[0]) for i in range(self.bert_auto_bertencoder)])
+                    [copy.deepcopy(bert_auto_bertencoder_model.encoder.layer[i]) for i in range(self.bert_auto_bertencoder)])
+                fc2_in_dim = self.bertmasklm.config.hidden_size
                 del bert_auto_bertencoder_model
-
-
+                
+            self.mask_fc2 = nn.Linear(fc2_in_dim, len(self.berttokenizer.vocab))
 
         if self.text_filling is True:
             model_name = args.bart_model_name
@@ -221,8 +227,6 @@ class TransformerModel(FairseqEncoderDecoderModel):
                         para.requires_grad = False
                     for para in self.bart_lm_head.parameters():
                         para.requires_grad = False
-
-
 
         if self.bert_ner is True:
             # TODO: check whether this will work.
@@ -512,6 +516,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
             bert_src_lengths = (bert_input != self.berttokenizer.pad()).sum(-1)
             encoder_out = self.encoder(bert_input, src_lengths=bert_src_lengths)
         elif self.use_bartinput:
+            # import pdb; pdb.set_trace()
             bart_src_lengths = (BART_bart_output != self.barttokenizer.pad_token_id).sum(-1)
             encoder_out = self.encoder(BART_bart_output, src_lengths=bart_src_lengths)
         else:
@@ -521,24 +526,33 @@ class TransformerModel(FairseqEncoderDecoderModel):
         if self.mask_lm:
             if BERT_encoder_input is None or BERT_encoder_output is None or self.use_bertinput:
                 BERT_encoder_input, BERT_encoder_output = BERT_bert_input, BERT_bert_output
+            # MT encoder with masked input
             mask_src_lengths = (BERT_encoder_input != self.encoder.dictionary.pad_index).sum(-1)
             mask_encoder_out = self.encoder(BERT_encoder_input, mask_src_lengths)
             if self.bert_auto_encoder:
                 mask_auto_encoder_out = mask_encoder_out['encoder_out'][-1]
+                # run through auto encoder layers
                 for layer in self.bert_auto_encoder_layers:
                     mask_auto_encoder_out = layer(mask_auto_encoder_out, encoder_padding_mask=mask_encoder_out['encoder_padding_mask'][0])
                 mask_encoder_out['encoder_out'][-1] = mask_auto_encoder_out
                 mask_encoder_out = mask_encoder_out['encoder_out'][-1].permute(1, 0, 2).contiguous()  # B * T * D
+                # B * T * Vocab_bert
                 mask_encoder_out = self.mask_fc2(mask_encoder_out)
             elif self.bert_auto_bertencoder:
+                # B * T * D
                 mask_auto_encoder_out = mask_encoder_out['encoder_out'][-1].permute(1, 0, 2).contiguous()
+                # B * T * D_bert
                 mask_auto_encoder_out = self.endim2bertdim(mask_auto_encoder_out)
-                # import pdb; pdb.set_trace()
+                # run through auto encoder bert layers
+                # float, B * T
+                atten_mask = (~mask_encoder_out['encoder_padding_mask'][0]).to(mask_auto_encoder_out.dtype)
+                input_shape = mask_auto_encoder_out.size()[:-1]
+                # B * 1 * 1 * T
+                extended_attn_mask = get_extended_attention_mask(atten_mask, input_shape, device=mask_auto_encoder_out.device, is_decoder=False)
                 for layer in self.bert_auto_bertencoder_layers:
-                    #TODO:attention mask
-                    mask_auto_encoder_out = layer(mask_auto_encoder_out)
-                mask_auto_encoder_out = self.bertdim2endim(mask_auto_encoder_out[0])
-                mask_encoder_out = self.mask_fc2(mask_auto_encoder_out)
+                    mask_auto_encoder_out = layer(mask_auto_encoder_out, attention_mask=extended_attn_mask)
+                # D_bert -> V_bert
+                mask_encoder_out = self.mask_fc2(mask_auto_encoder_out[0])
             else:
                 mask_encoder_out = mask_encoder_out['encoder_out'][-1].permute(1, 0, 2).contiguous()  # B * T * D
                 mask_encoder_out = self.mask_fc2(mask_encoder_out)
@@ -627,9 +641,11 @@ class TransformerModel(FairseqEncoderDecoderModel):
             with torch.no_grad():
                 # fill_bart_out = self.bartmasklm(BART_bart_input, attention_mask=~bart_encoder_padding_mask)['logits']
                 # fill_bart_out = self.bartmasklm(input_ids=BART_bart_input, attention_mask=~bart_encoder_padding_mask, decoder_input_ids=BART_bart_output, decoder_attention_mask=~bart_encoder_padding_mask)['logits']
-                fill_bart_out = self.bartmasklm(input_ids=BART_bart_input, attention_mask=~bart_encoder_padding_mask, labels=BART_bart_output)['logits']
-                fill_loss = self.bart_loss_fct(fill_bart_out.view(-1, self.bart_tokenizer.vocab_size),
-                                       BART_bart_output.view(-1))
+                fill_bart_out = self.bartmasklm(input_ids=BART_bart_input, attention_mask=~bart_encoder_padding_mask, labels=BART_bart_output)
+                fill_bart_logits = fill_bart_out['logits']
+                fill_loss = fill_bart_out['loss']
+                # fill_loss = self.bart_loss_fct(fill_bart_out.view(-1, self.bart_tokenizer.vocab_size),
+                                    #    BART_bart_output.view(-1))
             # print(self.bartmasklm.lm_head.state_dict())
             # fill_loss = fill_encoder_loss  # + fill_bart_loss
             # fill_loss = torch.tensor([0]).cuda()
@@ -675,7 +691,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
             ret['bert_padding_mask'] = bert_mask_encoder_padding_mask
 
         if self.text_filling:
-            ret['fill_bart_out'] = fill_bart_out
+            ret['fill_bart_out'] = fill_bart_logits
             ret['fill_encoder_out'] = fill_encoder_out
             ret['fill_loss'] = fill_loss
             ret['BART_encoder_mapping'] = BART_encoder_mapping
@@ -1427,6 +1443,64 @@ def Linear(in_features, out_features, bias=True):
         nn.init.constant_(m.bias, 0.0)
     return m
 
+
+def get_extended_attention_mask(attention_mask: Tensor, input_shape: Tuple[int], device: torch.device, is_decoder: bool) -> Tensor:
+    """
+    Makes broadcastable attention and causal masks so that future and masked tokens are ignored.
+    Arguments:
+        attention_mask (:obj:`torch.Tensor`):
+            Mask with ones indicating tokens to attend to, zeros for tokens to ignore.
+        input_shape (:obj:`Tuple[int]`):
+            The shape of the input to the model.
+        device: (:obj:`torch.device`):
+            The device of the input to the model.
+    Returns:
+        :obj:`torch.Tensor` The extended attention mask, with a the same dtype as :obj:`attention_mask.dtype`.
+    """
+    # We can provide a self-attention mask of dimensions [batch_size, from_seq_length, to_seq_length]
+    # ourselves in which case we just need to make it broadcastable to all heads.
+    if attention_mask.dim() == 3:
+        extended_attention_mask = attention_mask[:, None, :, :]
+    elif attention_mask.dim() == 2:
+        # Provided a padding mask of dimensions [batch_size, seq_length]
+        # - if the model is a decoder, apply a causal mask in addition to the padding mask
+        # - if the model is an encoder, make the mask broadcastable to [batch_size, num_heads, seq_length, seq_length]
+        if is_decoder:
+            batch_size, seq_length = input_shape
+            seq_ids = torch.arange(seq_length, device=device)
+            causal_mask = seq_ids[None, None, :].repeat(batch_size, seq_length, 1) <= seq_ids[None, :, None]
+            # in case past_key_values are used we need to add a prefix ones mask to the causal mask
+            # causal and attention masks must have same type with pytorch version < 1.3
+            causal_mask = causal_mask.to(attention_mask.dtype)
+
+            if causal_mask.shape[1] < attention_mask.shape[1]:
+                prefix_seq_len = attention_mask.shape[1] - causal_mask.shape[1]
+                causal_mask = torch.cat(
+                    [
+                        torch.ones(
+                            (batch_size, seq_length, prefix_seq_len), device=device, dtype=causal_mask.dtype
+                        ),
+                        causal_mask,
+                    ],
+                    axis=-1,
+                )
+
+            extended_attention_mask = causal_mask[:, None, :, :] * attention_mask[:, None, None, :]
+        else:
+            extended_attention_mask = attention_mask[:, None, None, :]
+    else:
+        raise ValueError(
+            f"Wrong shape for input_ids (shape {input_shape}) or attention_mask (shape {attention_mask.shape})"
+        )
+
+    # Since attention_mask is 1.0 for positions we want to attend and 0.0 for
+    # masked positions, this operation will create a tensor which is 0.0 for
+    # positions we want to attend and -10000.0 for masked positions.
+    # Since we are adding it to the raw scores before the softmax, this is
+    # effectively the same as removing these entirely.
+    extended_attention_mask = extended_attention_mask.to(dtype=attention_mask.dtype)  # fp16 compatibility
+    extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
+    return extended_attention_mask
 
 @register_model_architecture("transformer", "transformer_tiny")
 def tiny_architecture(args):
