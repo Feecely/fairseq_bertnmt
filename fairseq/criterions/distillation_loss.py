@@ -95,10 +95,6 @@ class DistillationLossCriterion(FairseqCriterion):
         distillation_output, bert_output = ret['distillation_out'], ret['bert_encoder_out']
         # [BS, L, D']
         distillation_output = distillation_output.permute(1, 0, 2).contiguous()
-<<<<<<< HEAD
-        
-=======
->>>>>>> origin/master
         if self.kd_level == 'sent-level':
             # [BS, D']
             bert_output = torch.mean(bert_output, dim=1)
@@ -106,27 +102,17 @@ class DistillationLossCriterion(FairseqCriterion):
             distillation_output = torch.mean(distillation_output, dim=1)
             loss_kd = self.MSE_loss(distillation_output, bert_output)
             loss_kd = loss_kd.sum()
-<<<<<<< HEAD
-        elif self.kd_level == 'token-level':
-            assert distillation_output.shape == bert_output.shape
-=======
 
         elif self.kd_level == 'token-level':
             assert distillation_output.shape == bert_output.shape
             #import pdb; pdb.set_trace()
->>>>>>> origin/master
             loss_kd = self.MSE_loss(distillation_output, bert_output)
             loss_kd = loss_kd.mean(dim=1).sum()
             # bert_output = torch.mean(bert_output, dim=1)
         else:
             raise NotImplementedError()
-<<<<<<< HEAD
-        
-        loss = loss * self.alpha  + loss_kd * (1. - self.alpha)
-=======
 
         loss = loss * self.alpha + loss_kd * (1. - self.alpha)
->>>>>>> origin/master
 
         sample_size = (
             sample["target"].size(0) if self.sentence_avg else sample["ntokens"]
@@ -135,6 +121,7 @@ class DistillationLossCriterion(FairseqCriterion):
             "loss": loss.data,
             "nll_loss": nll_loss.data,
             "kd_loss": loss_kd.data,
+            "fill_loss": ret['fill_loss'].item() if "fill_loss" in ret else 0.0,
             "ntokens": sample["ntokens"],
             "nsentences": sample["target"].size(0),
             "sample_size": sample_size,

@@ -5,8 +5,10 @@
 
 import math
 from dataclasses import dataclass, field
+from re import S
 
 import torch
+from torch.functional import split
 from fairseq import metrics, utils
 from fairseq.criterions import FairseqCriterion, register_criterion
 from fairseq.dataclass import FairseqDataclass
@@ -21,6 +23,10 @@ class NewFillDistillationLossCriterionConfig(FairseqDataclass):
     )
     report_accuracy: bool = field(
         default=False,
+        metadata={"help": "report accuracy metric"},
+    )
+    fill_kd_spec: str = field(
+        default="vocab_mean&&logits",
         metadata={"help": "report accuracy metric"},
     )
     ignore_prefix_size: int = field(
@@ -66,6 +72,7 @@ class NewFillDistillationLossCriterion(FairseqCriterion):
         kd_alpha=0.9,
         ignore_prefix_size=0,
         report_accuracy=False,
+        fill_kd_spec="vocab_mean&&logits"
     ):
         super().__init__(task)
         self.sentence_avg = sentence_avg
@@ -73,7 +80,15 @@ class NewFillDistillationLossCriterion(FairseqCriterion):
         self.ignore_prefix_size = ignore_prefix_size
         self.report_accuracy = report_accuracy
         self.MSE_loss = torch.nn.MSELoss(reduce=False, reduction="sum")
+        self.log_sm = torch.nn.LogSoftmax(dim=-1)
         self.alpha = kd_alpha
+        self._parse_spec(fill_kd_spec)
+        
+    def _parse_spec(self, spec_str):
+        splits = spec_str.split('&&')
+        assert len(splits) == 2
+        self.kd_level = splits[0]
+        self.kd_feature = splits[1]
         
     def forward(self, model, sample, reduce=True):
         """Compute the loss for the given sample.
@@ -88,9 +103,20 @@ class NewFillDistillationLossCriterion(FairseqCriterion):
 
         fill_bart_out, fill_encoder_out = ret['fill_bart_out'], ret['fill_encoder_out']
         fill_loss = ret['fill_loss']
-        loss_kd = self.MSE_loss(fill_encoder_out, fill_bart_out)
-        loss_kd = torch.mean(loss_kd, dim=-1)
-        loss_kd = loss_kd.sum()
+        if self.kd_feature == 'logits':
+            loss_kd = self.MSE_loss(fill_encoder_out, fill_bart_out)
+        elif self.kd_feature == 'logprobs':
+            loss_kd = self.MSE_loss(self.log_sm(fill_encoder_out), self.log_sm(fill_bart_out))
+        else:
+            raise NotImplementedError()
+        
+        if self.kd_level == 'vocab_mean':
+            loss_kd = torch.mean(loss_kd, dim=-1)
+            loss_kd = loss_kd.sum()
+        elif self.kd_level == 'sum':
+            loss_kd = loss_kd.sum()
+        else:
+            raise NotImplementedError
 
         loss = loss + loss_kd * (1. - self.alpha)
 

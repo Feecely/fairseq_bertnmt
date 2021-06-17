@@ -146,6 +146,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         self.bart_decoder_freeze = getattr(args, 'bart_decoder_freeze', False)
         self.bert_auto_encoder = getattr(args, 'bert_auto_encoder', 0)
         self.bert_auto_bertencoder = getattr(args, 'bert_auto_bertencoder', 0)
+        self.bart_auto_bartdecoder = getattr(args, 'bart_auto_bartdecoder', 0)
 
         self.berttokenizer = BertTokenizer.from_pretrained(args.bert_model_name, do_lower_case=False)
         if self.use_bartinput:
@@ -215,6 +216,12 @@ class TransformerModel(FairseqEncoderDecoderModel):
                 self.bart_fc = nn.Linear(enc_dim, bart_dim)
                 if self.bart_decoder_init:
                     configuration = BartConfig.from_json_file(model_name + '/config.json')
+                    assert self.bart_auto_bartdecoder > 0
+                    configuration.num_hidden_layers = self.bart_auto_bartdecoder
+                    # bert_auto_bertencoder_model = BertModel(configuration)
+                    # self.bert_auto_bertencoder_layers = nn.ModuleList([])
+                    # self.bert_auto_bertencoder_layers.extend(
+                    # [copy.deepcopy(bert_auto_bertencoder_model.encoder.layer[i]) for i in range(self.bert_auto_bertencoder)])
                     tmp_model = BartForConditionalGeneration(configuration)
                     self.bart_decoder_net = copy.deepcopy(tmp_model.model.decoder)
                     self.bart_lm_head = copy.deepcopy(tmp_model.lm_head)
@@ -373,6 +380,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         parser.add_argument('--bart-decoder-freeze', action='store_true', help='...')
         parser.add_argument('--bert-auto-encoder', default=0, type=int)
         parser.add_argument('--bert-auto-bertencoder', default=0, type=int)
+        parser.add_argument('--bart-auto-bartdecoder', default=6, type=int)
         # parser.add_argument('--bart-auto-encoder', default=0, type=int)
 
         # fmt: on
