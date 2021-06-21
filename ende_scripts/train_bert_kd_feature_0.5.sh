@@ -6,9 +6,9 @@ ARCH=transformer_wmt_en_de
 ROOT=/apdcephfs/share_47076/elliottyan/co-work-projects/fairseq-bert
 
 #### MODIFY ######
-KD_ALPHA=0.5
+KD_ALPHA=1
 DATA_SIG=wmt14_en_de-bert-or-bart
-MODEL_SIG=d512_bert_kd_feature_alpha_${KD_ALPHA}
+MODEL_SIG=d512_bert_kd_feature_halfalpha_${KD_ALPHA}
 #### MODIFY ######
 
 DATAPATH=$ROOT/data-bin/$DATA_SIG
@@ -26,7 +26,7 @@ LC_ALL=en_US.UTF-8 python $ROOT/fairseq_cli/train.py $DATAPATH \
 --log-interval 100 --disable-validation \
 --fp16 --update-freq 1 --ddp-backend=no_c10d \
 --max-update 200000 --warmup-updates 4000 --warmup-init-lr '1e-07' \
---criterion distillation_loss \
+--criterion halfalpha_distillation_loss \
 --masking  \
 --left-pad-source \
 --kd-alpha $KD_ALPHA --origin-kd \

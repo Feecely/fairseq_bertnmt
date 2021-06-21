@@ -19,6 +19,7 @@ from .colorize_dataset import ColorizeDataset
 from .concat_dataset import ConcatDataset
 from .concat_sentences_dataset import ConcatSentencesDataset
 from .denoising_dataset import DenoisingDataset
+from .electrapretrain_dataset import ElectrapretrainDataset
 from .id_dataset import IdDataset
 from .indexed_dataset import (
     IndexedCachedDataset,
@@ -80,6 +81,7 @@ __all__ = [
     "ConcatSentencesDataset",
     "CountingIterator",
     "DenoisingDataset",
+    "ElectrapretrainDataset",
     "Dictionary",
     "EncodedFastaDataset",
     "EpochBatchIterator",

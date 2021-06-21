@@ -886,6 +886,13 @@ class GenerationConfig(FairseqDataclass):
     bart_model_name: str = field(
         default='bart-base', metadata={"help": "..."}
     )
+    use_electrainput: bool = field(
+        default=False,
+        metadata={"help": "..."},
+    )
+    electra_model_name: str = field(
+        default='electra-base', metadata={"help": "..."}
+    )
 
 @dataclass
 class CommonEvalConfig(FairseqDataclass):

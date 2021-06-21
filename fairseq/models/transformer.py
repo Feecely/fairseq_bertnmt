@@ -36,6 +36,7 @@ from bert import BertModel, BertTokenizer, BertForMaskedLM
 from transformers import AutoModelForTokenClassification, AutoModelForSequenceClassification, AutoModel
 from transformers import AutoTokenizer, AutoModelWithLMHead
 from transformers import BartForConditionalGeneration, BartTokenizer, BertModel, BartModel, BartConfig, BertLayer, BertConfig
+from transformers import ElectraTokenizer, ElectraModel, ElectraForPreTraining, ElectraForMaskedLM
 
 AAA = 0
 
@@ -134,13 +135,17 @@ class TransformerModel(FairseqEncoderDecoderModel):
         self.mask_cls_sep = getattr(args, 'mask_cls_sep', False)
         self.use_bertinput = getattr(args, 'use_bertinput', False)
         self.use_bartinput = getattr(args, 'use_bartinput', False)
+        self.use_electrainput = getattr(args, 'use_electrainput', False)
         self.mask_lm = getattr(args, 'mask_lm', False)
         self.extra_data = getattr(args, 'extra_data', False)
         self.text_filling = getattr(args, 'text_filling', False)
+        self.electra_pretrain_task = getattr(args, 'electra_pretrain_task', False)
+        self.electra_generator = getattr(args, 'electra_generator', False)
         self.bert_ner = getattr(args, 'bert_ner', False)
         self.bert_sst = getattr(args, 'bert_sst', False)
         self.origin_kd = getattr(args, 'origin_kd', False)
         self.origin_kd_bart = getattr(args, 'origin_kd_bart', False)
+        self.origin_kd_electra = getattr(args, 'origin_kd_electra', False)
         self.bart_decoder = getattr(args, 'bart_decoder', False)
         self.bart_decoder_init = getattr(args, 'bart_decoder_init', False)
         self.bart_decoder_freeze = getattr(args, 'bart_decoder_freeze', False)
@@ -151,6 +156,8 @@ class TransformerModel(FairseqEncoderDecoderModel):
         self.berttokenizer = BertTokenizer.from_pretrained(args.bert_model_name, do_lower_case=False)
         if self.use_bartinput:
             self.barttokenizer = BartTokenizer.from_pretrained(args.bart_model_name, do_lower_case=False)
+        if self.use_electrainput:
+            self.electratokenizer = ElectraTokenizer.from_pretrained(args.electra_model_name)
         if self.origin_kd is True:
             model_name = args.bert_model_name
             self.bertmasklm = BertModel.from_pretrained(model_name)
@@ -166,6 +173,14 @@ class TransformerModel(FairseqEncoderDecoderModel):
             enc_dim = args.encoder_embed_dim
             if enc_dim != bart_dim:
                 self.transform_fc = nn.Linear(enc_dim, bart_dim)
+
+        if self.origin_kd_electra is True:
+            model_name = args.electra_model_name
+            self.electramasklm = ElectraModel.from_pretrained(model_name)
+            electra_dim = self.electramasklm.embeddings.word_embeddings.embedding_dim
+            enc_dim = args.encoder_embed_dim
+            if enc_dim != electra_dim:
+                self.transform_fc = nn.Linear(enc_dim, electra_dim)
 
         if self.mask_lm is True:
             model_name = args.bert_model_name
@@ -204,7 +219,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
 
         if self.text_filling is True:
             model_name = args.bart_model_name
-            self.bart_tokenizer = BartTokenizer.from_pretrained(model_name)
+            self.bart_tokenizer = BartTokenizer.from_pretrained(model_name, do_lower_case=False)
             self.bartmasklm = BartForConditionalGeneration.from_pretrained(model_name)
 
             self.bart_mask_fc2 = nn.Linear(args.encoder_embed_dim, self.bart_tokenizer.vocab_size)
@@ -214,9 +229,9 @@ class TransformerModel(FairseqEncoderDecoderModel):
                 bart_dim = self.bartmasklm.config.d_model
                 enc_dim = args.encoder_embed_dim
                 self.bart_fc = nn.Linear(enc_dim, bart_dim)
-                if self.bart_decoder_init:
+                if self.bart_decoder_init and self.bart_auto_bartdecoder > 0:
                     configuration = BartConfig.from_json_file(model_name + '/config.json')
-                    assert self.bart_auto_bartdecoder > 0
+                    # assert self.bart_auto_bartdecoder > 0
                     configuration.num_hidden_layers = self.bart_auto_bartdecoder
                     # bert_auto_bertencoder_model = BertModel(configuration)
                     # self.bert_auto_bertencoder_layers = nn.ModuleList([])
@@ -226,14 +241,32 @@ class TransformerModel(FairseqEncoderDecoderModel):
                     self.bart_decoder_net = copy.deepcopy(tmp_model.model.decoder)
                     self.bart_lm_head = copy.deepcopy(tmp_model.lm_head)
                     del tmp_model
+                elif self.bart_decoder_init:
+                    configuration = BartConfig.from_json_file(model_name + '/config.json')
+                    tmp_model = BartForConditionalGeneration(configuration)
+                    self.bart_decoder_net = copy.deepcopy(tmp_model.model.decoder)
+                    self.bart_lm_head = copy.deepcopy(tmp_model.lm_head)
+                    del tmp_model
                 else:
                     self.bart_decoder_net = copy.deepcopy(self.bartmasklm.model.decoder)
                     self.bart_lm_head = copy.deepcopy(self.bartmasklm.lm_head)
+
                 if self.bart_decoder_freeze:
                     for para in self.bart_decoder_net.parameters():
                         para.requires_grad = False
                     for para in self.bart_lm_head.parameters():
                         para.requires_grad = False
+
+        if self.electra_pretrain_task is True:
+            model_name = args.electra_model_name
+            self.electra_tokenizer = ElectraTokenizer.from_pretrained(model_name)
+            self.electramasklm = ElectraForPreTraining.from_pretrained(model_name)
+            self.electra_fc1 = nn.Linear(args.encoder_embed_dim, args.encoder_embed_dim, bias=True)
+            self.electra_prd = nn.Linear(args.encoder_embed_dim, 1, bias=True)
+            if self.electra_generator is not None:
+                self.electra_generator_model = ElectraForMaskedLM.from_pretrained(self.electra_generator)
+                for para in self.electra_generator_model.parameters():
+                    para.requires_grad = False
 
         if self.bert_ner is True:
             # TODO: check whether this will work.
@@ -362,18 +395,24 @@ class TransformerModel(FairseqEncoderDecoderModel):
         # parser.add_argument('--finetune-bert', action='store_true', help='...')
         parser.add_argument('--use-bertinput', action='store_true', help='...')
         parser.add_argument('--use-bartinput', action='store_true', help='...')
+        parser.add_argument('--use-electrainput', action='store_true', help='...')
         parser.add_argument('--mask-lm', action='store_true', help='...')
         parser.add_argument('--bert-ner', action='store_true', help='...')
         parser.add_argument('--bert-sst', action='store_true', help='...')
 
         parser.add_argument('--origin-kd', action='store_true', help='...')
         parser.add_argument('--origin-kd-bart', action='store_true', help='...')
+        parser.add_argument('--origin-kd-electra', action='store_true', help='...')
         parser.add_argument('--kd-alpha', default=0.9, type=float)
         parser.add_argument('--extra-data', action='store_true', help='...')
+        parser.add_argument('--electra-pretrain', action='store_true', help='...')
+        parser.add_argument('--electra-pretrain-task', action='store_true', help='...')
+        parser.add_argument('--electra-generator', default=None, type=str)
         parser.add_argument('--denoising', action='store_true', help='...')
         parser.add_argument('--masking', action='store_true', help='...')
         parser.add_argument('--bert-model-name', default='bert-base-uncased', type=str)
         parser.add_argument('--bart-model-name', default='bart-base-uncased', type=str)
+        parser.add_argument('--electra-model-name', default='electra-base-uncased', type=str)
         parser.add_argument('--text-filling', action='store_true', help='...')
         parser.add_argument('--bart-decoder', action='store_true', help='...')
         parser.add_argument('--bart-decoder-init', action='store_true', help='...')
@@ -408,11 +447,18 @@ class TransformerModel(FairseqEncoderDecoderModel):
             src_berttokenizer = next(iter(task.datasets.values())).berttokenizer
         else:
             src_berttokenizer = BertTokenizer.from_pretrained(args.bert_model_name, do_lower_case=False)
+
         if getattr(args, 'use_bartinput', False):
             if len(task.datasets) > 0:
                 src_barttokenizer = next(iter(task.datasets.values())).barttokenizer
             else:
                 src_barttokenizer = BartTokenizer.from_pretrained(args.bart_model_name, do_lower_case=False)
+
+        if getattr(args, 'use_electrainput', False):
+            if len(task.datasets) > 0:
+                src_electratokenizer = next(iter(task.datasets.values())).electratokenizer
+            else:
+                src_electratokenizer = ElectraTokenizer.from_pretrained(args.electra_model_name)
 
         if args.share_all_embeddings:
             # if src_dict != tgt_dict:
@@ -437,6 +483,8 @@ class TransformerModel(FairseqEncoderDecoderModel):
                 src_dict = src_berttokenizer
             if getattr(args, 'use_bartinput', False):
                 src_dict = src_barttokenizer
+            if getattr(args, 'use_electrainput', False):
+                src_dict = src_electratokenizer
             encoder_embed_tokens = cls.build_embedding(
                 args, src_dict, args.encoder_embed_dim, args.encoder_embed_path
             )
@@ -496,13 +544,18 @@ class TransformerModel(FairseqEncoderDecoderModel):
             BERT_encoder_output=None,
             BART_encoder_input=None,
             BART_encoder_output=None,
+            ELECTRA_encoder_input=None,
+            ELECTRA_encoder_output=None,
             BERT_bert_input=None,
             BERT_bert_output=None,
             BART_bart_input=None,
             BART_bart_output=None,
+            ELECTRA_electra_input=None,
+            ELECTRA_electra_output=None,
             BERT_bert_labels=None,
             BERT_encoder_mapping=None,
             BART_encoder_mapping=None,
+            ELECTRA_encoder_mapping=None,
             extra_data=None,
             return_all_hiddens: bool = True,
             features_only: bool = False,
@@ -527,6 +580,10 @@ class TransformerModel(FairseqEncoderDecoderModel):
             # import pdb; pdb.set_trace()
             bart_src_lengths = (BART_bart_output != self.barttokenizer.pad_token_id).sum(-1)
             encoder_out = self.encoder(BART_bart_output, src_lengths=bart_src_lengths)
+        elif self.use_electrainput:
+            # import pdb; pdb.set_trace()
+            electra_src_lengths = (ELECTRA_electra_output != self.electratokenizer.pad_token_id).sum(-1)
+            encoder_out = self.encoder(ELECTRA_electra_output, src_lengths=electra_src_lengths)
         else:
             encoder_out = self.encoder(
                 src_tokens, src_lengths=src_lengths, return_all_hiddens=return_all_hiddens
@@ -638,6 +695,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
                 fill_encoder_out = fill_encoder_out['encoder_out'][-1].permute(1, 0, 2).contiguous()
                 fill_encoder_out = self.bart_mask_fc2(fill_encoder_out)
 
+
             # if self.mask_lm and self.text_filling:
             #     fill_encoder_loss = torch.tensor([0]).cuda()
             # else:
@@ -656,7 +714,37 @@ class TransformerModel(FairseqEncoderDecoderModel):
                                     #    BART_bart_output.view(-1))
             # print(self.bartmasklm.lm_head.state_dict())
             # fill_loss = fill_encoder_loss  # + fill_bart_loss
-            # fill_loss = torch.tensor([0]).cuda()
+
+        if self.electra_pretrain_task is True:
+            #TODO: now only suitable for use_electrainput is Ture
+            if self.electra_generator is not None:
+                ELECTRA_electra_input_bos = ELECTRA_electra_input == torch.tensor(101)
+                ELECTRA_electra_input_eos = ELECTRA_electra_input == torch.tensor(102)
+                ELECTRA_electra_input_pad = ELECTRA_electra_input == torch.tensor(0)
+                ELECTRA_electra_input_sp_token = ELECTRA_electra_input_bos ^ ELECTRA_electra_input_eos ^ ELECTRA_electra_input_pad
+                with torch.no_grad():
+                    ELECTRA_electra_generator_output = self.electra_generator_model(ELECTRA_electra_input, labels=ELECTRA_electra_output)
+                ELECTRA_electra_generator_output = ELECTRA_electra_generator_output['logits'].softmax(dim=2).max(dim=2).indices
+                ELECTRA_electra_generator_output = ELECTRA_electra_input * ELECTRA_electra_input_sp_token + ELECTRA_electra_generator_output * (~ELECTRA_electra_input_sp_token)
+                ELECTRA_electra_input = ELECTRA_electra_generator_output
+                ELECTRA_encoder_input = ELECTRA_electra_generator_output
+            else:
+                ELECTRA_electra_input = ELECTRA_electra_output
+                ELECTRA_encoder_input = ELECTRA_encoder_output
+            assert ELECTRA_electra_input.shape == ELECTRA_electra_output.shape
+            electra_encoder_padding_mask = ELECTRA_electra_output.eq(self.electra_tokenizer.pad_token_id)
+            electra_src_lengths = (ELECTRA_encoder_input != self.encoder.dictionary.pad_token_id).sum(-1)
+            electra_encoder_out = self.encoder(ELECTRA_encoder_input, electra_src_lengths)
+            electra_encoder_out = electra_encoder_out['encoder_out'][-1].permute(1, 0, 2).contiguous()
+            electra_encoder_out = self.electra_fc1(electra_encoder_out)
+            electra_encoder_out = self.electra_prd(electra_encoder_out).squeeze(-1)
+
+            with torch.no_grad():
+                electra_task_out = self.electramasklm(input_ids=ELECTRA_electra_input, attention_mask=~electra_encoder_padding_mask, labels=ELECTRA_electra_output)
+            electra_task_loss = electra_task_out['loss']
+            electra_task_out = electra_task_out['logits']
+
+
         decoder_out = self.decoder(
             prev_output_tokens,
             encoder_out=encoder_out,
@@ -690,6 +778,18 @@ class TransformerModel(FairseqEncoderDecoderModel):
                 bert_encoder_out = self.bartmasklm(BART_bart_output, attention_mask=~bart_encoder_padding_mask)
             ret['bert_encoder_out'] = bert_encoder_out['encoder_last_hidden_state']
 
+        if self.origin_kd_electra:
+            if getattr(self, "transform_fc", None) is not None:
+                ret['distillation_out'] = self.transform_fc(encoder_out['encoder_out'][0])
+            else:
+                ret['distillation_out'] = encoder_out
+            with torch.no_grad():
+                # hidden or log-probs?
+                # bert_encoder_out = self.bertmasklm(BERT_bert_input, attention_mask=~bert_encoder_padding_mask)
+                electra_encoder_padding_mask = ELECTRA_electra_output.eq(self.electratokenizer.pad_token_id)
+                bert_encoder_out = self.electramasklm(ELECTRA_electra_output, attention_mask=~electra_encoder_padding_mask)
+            ret['bert_encoder_out'] = bert_encoder_out['last_hidden_state']
+
         if self.mask_lm:
             ret['mask_bert_out'] = mask_bert_out
             ret['mask_encoder_out'] = mask_encoder_out
@@ -704,6 +804,11 @@ class TransformerModel(FairseqEncoderDecoderModel):
             ret['fill_loss'] = fill_loss
             ret['BART_encoder_mapping'] = BART_encoder_mapping
             ret['bart_padding_mask'] = bart_encoder_padding_mask
+
+        if self.electra_pretrain_task:
+            ret['electra_encoder_out'] = electra_encoder_out
+            ret['electra_task_out'] = electra_task_out
+            ret['electra_task_loss'] = electra_task_loss
 
         if self.bert_ner:
             ret['ner_bert_out'] = ner_bert_out

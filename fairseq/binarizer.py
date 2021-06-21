@@ -13,6 +13,7 @@ from typing import List, Dict
 #from bert import BertTokenizer
 from transformers.models.bart import BartTokenizer
 from transformers.models.bert import BertTokenizer
+from transformers.models.electra import ElectraTokenizer
 
 def safe_readline(f):
     pos = f.tell()
@@ -70,7 +71,7 @@ class Binarizer:
                     if append_eos:
                         id_list.append(dict.eos())
                     ids = torch.IntTensor(id_list)
-                elif isinstance(dict, BertTokenizer):
+                elif isinstance(dict, BertTokenizer) and not isinstance(dict, ElectraTokenizer):
                     line = line.strip()
                     line = '{} {} {}'.format('[CLS]', line, '[SEP]')
                     if avoid_tokenize is False:
@@ -100,6 +101,26 @@ class Binarizer:
                     # tokenizedline = dict.tokenize(line)
                     words = dict.convert_tokens_to_ids(tokenizedline)
                     assert len(tokenizedline) == len(words)
+                    nwords = len(words)
+                    ids = torch.IntTensor(nwords)
+                    for i, word in enumerate(words):
+                        ids[i] = word
+                        replaced_consumer_from_pretrained(tokenizedline[i], word)
+                elif isinstance(dict, ElectraTokenizer):
+                    line = line.strip()
+                    line = '{} {} {}'.format('[CLS]', line, '[SEP]')
+                    if avoid_tokenize is False:
+                        tokenizedline = dict.tokenize(line)
+                    else:
+                        tokenizedline = line.strip().split()
+                    # max-len:1000000000000
+                    # print('----------bert_max-len:' + str(dict.max_len) + '----------')
+                    # if len(tokenizedline) > dict.max_len:
+                    #     tokenizedline = tokenizedline[:dict.max_len - 1]
+                    #     tokenizedline.append('[SEP]')
+                    words = dict.convert_tokens_to_ids(tokenizedline)
+                    #
+                    # import pdb; pdb.set_trace()
                     nwords = len(words)
                     ids = torch.IntTensor(nwords)
                     for i, word in enumerate(words):

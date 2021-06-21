@@ -298,6 +298,7 @@ def add_preprocess_args(parser):
                        help="...")
     group.add_argument('--bert-model-name', default='', type=str)
     group.add_argument('--bart-model-name', default='', type=str)
+    group.add_argument('--electra-model-name', default='', type=str)
     # fmt: on
     return parser
 

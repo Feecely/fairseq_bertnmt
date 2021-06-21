@@ -96,7 +96,7 @@ def main(cfg: FairseqConfig) -> None:
 
     print('------------------------------')
     if not cfg.task.finetune_bert:
-        ignore_params = ['bert_encoder','bertmasklm', 'bert_ner_model', 'bert_sst_model', 'gpt2_model', 'bartmasklm']
+        ignore_params = ['bert_encoder','bertmasklm', 'bert_ner_model', 'bert_sst_model', 'gpt2_model', 'bartmasklm', 'electramasklm']
         for key in ignore_params:
             parm_group = getattr(model, key, None)
             if parm_group is not None:

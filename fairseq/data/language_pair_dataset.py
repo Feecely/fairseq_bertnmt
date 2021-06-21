@@ -287,6 +287,8 @@ class LanguagePairDataset(FairseqDataset):
         src_bert_dataset=None,
         denoising=False,
         src_bart_dataset=None,
+        src_electra_dataset=None,
+        electra_pretrain=None,
         #extra_datasets=None,
         left_pad_source=True,
         left_pad_target=False,
@@ -312,6 +314,7 @@ class LanguagePairDataset(FairseqDataset):
             assert len(src) == len(
                 tgt
             ), "Source and target must contain the same number of examples"
+        assert not (denoising is True and src_bart_dataset == None is True)
         assert not (denoising is True and src_bart_dataset == None is True)
         self.src = src
         self.tgt = tgt

@@ -10,7 +10,7 @@ from transformers import AutoTokenizer
 # TODO: use the same tokenizer
 from bert import BertTokenizer
 from transformers.models.bart import BartTokenizer
-
+from transformers.models.electra import ElectraTokenizer
 from fairseq.binarizer import safe_readline
 from collections import Counter
 from fairseq import tasks
@@ -254,6 +254,8 @@ def parse_args(args=None):
                         help="Path of input file.")
     parser.add_argument("--output_path", type=str, required=True,
                         help="Output path")
+    parser.add_argument("--electra_tokenizer", type=str, default="",
+                        help="Path of electra tokenizer")
     parser.add_argument("--bart_tokenizer", type=str, default="",
                         help="Path of bart tokenizer")
     parser.add_argument("--bert_tokenizer", type=str, default="",
@@ -276,9 +278,11 @@ def main(args):
     bert_tokenizer = BertTokenizer.from_pretrained(args.bert_tokenizer, do_lower_case=False)
     bert_tokenizer.name_or_path = args.bert_tokenizer
     bart_tokenizer = BartTokenizer.from_pretrained(args.bart_tokenizer, do_lower_case=False)
+    electra_tokenizer = ElectraTokenizer.from_pretrained(args.electra_tokenizer)
     #xlnet_tokenizer = AutoTokenizer.from_pretrained('xlnet-base-cased',cache_dir='/mnt/yardcephfs/mmyard/g_wxg_td_prc/mt/v_xyvhuang/ft_local/bart-base')
     tokenizer.append(bert_tokenizer)
     tokenizer.append(bart_tokenizer)
+    tokenizer.append(electra_tokenizer)
     #tokenizer.append(xlnet_tokenizer)
     encoder_inputs, sentence_splits, extra_outs, drop_list = add_line(filename, tokenizer, add_extra_outs=args.extra_outs, n_process=args.n_process)
     # save_path = '/mnt/yardcephfs/mmyard/g_wxg_td_prc/mt/v_xyvhuang/bert-nmt/examples/copy_translation/encoder.en'
@@ -290,6 +294,7 @@ def main(args):
     if len(extra_outs) != []:
         save_txt(save_path + '.bert', extra_outs[0])
         save_txt(save_path + '.bart', extra_outs[1])
+        save_txt(save_path + '.electra', extra_outs[1])
     output_dict_save_path = args.output_path + '.data_dict'
     save_input_dict(output_dict_save_path, encoder_inputs)
 

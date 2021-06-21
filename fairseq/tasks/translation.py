@@ -14,6 +14,7 @@ from omegaconf import II
 from bert import BertTokenizer
 from transformers import AutoTokenizer
 from transformers import BartTokenizer
+from transformers import ElectraTokenizer
 import numpy as np
 from fairseq import metrics, utils
 from fairseq.data import (
@@ -22,6 +23,7 @@ from fairseq.data import (
     LanguagePairDataset,
     DenoisingBartDataset,
     MaskingDataset,
+    ElectrapretrainDataset,
     MaskingExtraDataset,
     DenoisingBartExtraDataset,
     PrependTokenDataset,
@@ -66,10 +68,17 @@ def load_langpair_dataset(
     prepend_bos_src=None,
     bert_model_name=None,
     bart_model_name=None,
+    electra_model_name=None,
+    electra_pretrain=False,
     denoising=False,
     masking=False,
     extra_data=False,
-    input_mapping=False
+    input_mapping=False,
+    mask_ratio=None,
+    random_ratio=None,
+    insert_ratio=None,
+    rotate_ratio=None,
+    permute_sentence_ratio=None,
 ):
     def split_exists(split, src, tgt, lang, data_path):
         filename = os.path.join(data_path, "{}.{}-{}.{}".format(split, src, tgt, lang))
@@ -81,6 +90,8 @@ def load_langpair_dataset(
     if denoising:
         bart_tokenizer = AutoTokenizer.from_pretrained(bart_model_name, do_lower_case=False)
         #bart_tokenizer = BartTokenizer.from_pretrained(bart_model_name, do_lower_case=False)
+    if electra_pretrain:
+        electra_tokenizer = ElectraTokenizer.from_pretrained(electra_model_name)
     srcbert_datasets = []
     extra_datasets = []
     extra_bert_datasets = []
@@ -89,6 +100,8 @@ def load_langpair_dataset(
     extra_bart_mapping_datasets = []
     if denoising:
         srcbart_datasets = []
+    if electra_pretrain:
+        srcelectra_datasets = []
     for k in itertools.count():
         split_k = split + (str(k) if k > 0 else "")
 
@@ -101,6 +114,10 @@ def load_langpair_dataset(
             if denoising:
                 bartprefix = os.path.join(data_path, '{}.bart.{}-{}.'.format(split_k, src, tgt))
                 bart_mapping_prefix = os.path.join(data_path, '{}.bart.map.{}-{}.'.format(split_k, src, tgt))
+
+            if electra_pretrain:
+                electraprefix = os.path.join(data_path, '{}.electra.{}-{}.'.format(split_k, src, tgt))
+                electra_mapping_prefix = os.path.join(data_path, '{}.electra.map.{}-{}.'.format(split_k, src, tgt))
 
             if extra_data:
                 extraprefix = os.path.join(data_path, '{}.extra.{}-{}.'.format(split_k, src, tgt))
@@ -118,6 +135,10 @@ def load_langpair_dataset(
             if denoising:
                 bartprefix = os.path.join(data_path, '{}.bart.{}-{}.'.format(split_k, tgt, src))
                 bart_mapping_prefix = os.path.join(data_path, '{}.bart.map.{}-{}.'.format(split_k, src, tgt))
+
+            if electra_pretrain:
+                electraprefix = os.path.join(data_path, '{}.electra.{}-{}.'.format(split_k, src, tgt))
+                electra_mapping_prefix = os.path.join(data_path, '{}.electra.map.{}-{}.'.format(split_k, src, tgt))
 
             if extra_data:
                 extraprefix = os.path.join(data_path, '{}.extra.{}-{}.'.format(split_k, src, tgt))
@@ -167,6 +188,9 @@ def load_langpair_dataset(
         if denoising:
             srcbart_datasets.append(data_utils.load_indexed_dataset(bartprefix + src, dataset_impl=dataset_impl,
                                                                  ))
+        if electra_pretrain:
+            srcelectra_datasets.append(data_utils.load_indexed_dataset(electraprefix + src, dataset_impl=dataset_impl,
+                                                                    ))
         if extra_data and split == 'train':
             extra_datasets.append(data_utils.load_indexed_dataset(extraprefix + src, dataset_impl=dataset_impl,
                                                                  ))
@@ -187,22 +211,42 @@ def load_langpair_dataset(
         if extra_data and split == 'train':
             extra_datasets[-1] = PrependTokenDataset(extra_datasets[-1], token=src_dict.bos_index)
         if denoising is True:
-            # srcbart_dataset = indexed_dataset.make_dataset(bartprefix + src, impl=dataset_impl,
-            #                                                fix_lua_indexing=True, dictionary=bart_tokenizer)
             if input_mapping is True and split == 'train':
-                #bart_mapping_dataset = indexed_dataset.make_dataset(bart_mapping_prefix + src, impl=dataset_impl,
-                #                                                   fix_lua_indexing=True)
                 bart_mapping_dataset = data_utils.load_indexed_dataset(bart_mapping_prefix + src,
                                                                        dataset_impl=dataset_impl)
             else:
                 bart_mapping_dataset = None
-            #import pdb; pdb.set_trace()
+
             src_datasets[-1] = DenoisingBartDataset(
                 src_datasets[-1], src_datasets[-1].sizes, src_dict,
                 srcbart_datasets[-1], srcbart_datasets[-1].sizes,
                 bart_tokenizer,
                 map_dataset=bart_mapping_dataset,
+                mask_ratio=mask_ratio,
+                random_ratio=random_ratio,
+                insert_ratio=insert_ratio,
+                rotate_ratio=rotate_ratio,
+                permute_sentence_ratio=permute_sentence_ratio,
             )
+
+        if electra_pretrain is True:
+            if input_mapping is True and split == 'train':
+                electra_mapping_dataset = data_utils.load_indexed_dataset(electra_mapping_prefix + src,
+                                                                       dataset_impl=dataset_impl)
+            else:
+                electra_mapping_dataset = None
+
+            src_datasets[-1] = ElectrapretrainDataset(
+                src_datasets[-1], src_datasets[-1].sizes, src_dict,
+                srcelectra_datasets[-1], srcelectra_datasets[-1].sizes,
+                electra_tokenizer,
+                map_dataset=electra_mapping_dataset,
+                left_pad_source=left_pad_source,
+                left_pad_target=left_pad_target,
+                max_source_positions=max_source_positions,
+                max_target_positions=max_target_positions,
+            )
+
         if masking is True:
             if input_mapping is True and split == 'train':
                 #bert_mapping_dataset = indexed_dataset.make_dataset(bert_mapping_prefix + src, impl=dataset_impl, fix_lua_indexing=True)
@@ -302,6 +346,7 @@ def load_langpair_dataset(
 
     src_bart_dataset = None
     src_bert_dataset = None
+    src_electra_dataset = None
 
     return LanguagePairDataset(
         src_dataset,
@@ -314,6 +359,7 @@ def load_langpair_dataset(
         src_bert_dataset,
         denoising,
         src_bart_dataset,
+        src_electra_dataset,
         #extra_datasets,
         left_pad_source=left_pad_source,
         left_pad_target=left_pad_target,
@@ -426,8 +472,14 @@ class TranslationConfig(FairseqDataclass):
     masking: bool = field(
         default=False, metadata={"help": "..."}
     )
+    electra_pretrain: bool = field(
+        default=False, metadata={"help": "..."}
+    )
     input_mapping: bool = field(
         default=False, metadata={"help": "..."}
+    )
+    electra_model_name: str = field(
+        default='electra-base', metadata={"help": "..."}
     )
     bart_model_name: str = field(
         default='bart-base', metadata={"help": "..."}
@@ -443,6 +495,25 @@ class TranslationConfig(FairseqDataclass):
     )
     use_bartinput: bool = field(
         default=False, metadata={"help": "..."}
+    )
+    use_electrainput: bool = field(
+        default=False, metadata={"help": "..."}
+    )
+    # mask_ratio = None, random_ratio = None, insert_ratio = None, rotate_ratio = None, permute_sentence_ratio = None
+    mask_ratio: float = field(
+        default=0.3, metadata={"help": "..."}
+    )
+    random_ratio: float = field(
+        default=0.1, metadata={"help": "..."}
+    )
+    insert_ratio: float = field(
+        default=0.0, metadata={"help": "..."}
+    )
+    rotate_ratio: float = field(
+        default=0.5, metadata={"help": "..."}
+    )
+    permute_sentence_ratio: float = field(
+        default=1.0, metadata={"help": "..."}
     )
 
 @register_task("translation", dataclass=TranslationConfig)
@@ -468,10 +539,17 @@ class TranslationTask(FairseqTask):
         self.tgt_dict = tgt_dict
         self.denoising = cfg.denoising if hasattr(cfg, 'denoising') else False
         self.masking = cfg.masking if hasattr(cfg, 'masking') else False
+        self.electra_pretrain = cfg.electra_pretrain if hasattr(cfg, 'electra_pretrain') else False
         self.extra_data = cfg.extra_data if hasattr(cfg, 'extra_data') else False
         self.input_mapping = cfg.input_mapping if hasattr(cfg, 'input_mapping') else False
         self.bert_model_name = cfg.bert_model_name
         self.bart_model_name = cfg.bart_model_name
+        self.electra_model_name = cfg.electra_model_name
+        self.mask_ratio = cfg.mask_ratio,
+        self.random_ratio = cfg.random_ratio,
+        self.insert_ratio = cfg.insert_ratio,
+        self.rotate_ratio = cfg.rotate_ratio,
+        self.permute_sentence_ratio = cfg.permute_sentence_ratio,
     @classmethod
     def setup_task(cls, cfg: TranslationConfig, **kwargs):
         """Setup the task (e.g., load dictionaries).
@@ -544,10 +622,17 @@ class TranslationTask(FairseqTask):
             pad_to_multiple=self.cfg.required_seq_len_multiple,
             bert_model_name=self.bert_model_name,
             bart_model_name=self.bart_model_name,
+            electra_model_name=self.electra_model_name,
+            electra_pretrain=self.electra_pretrain,
             denoising=self.denoising,
             masking=self.masking,
             extra_data=self.extra_data,
             input_mapping=self.input_mapping,
+            mask_ratio=self.mask_ratio,
+            random_ratio=self.random_ratio,
+            insert_ratio=self.insert_ratio,
+            rotate_ratio=self.rotate_ratio,
+            permute_sentence_ratio=self.permute_sentence_ratio,
         )
 
     def build_dataset_for_inference(self, src_tokens, src_lengths, constraints=None):

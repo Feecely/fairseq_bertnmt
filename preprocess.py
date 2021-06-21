@@ -24,6 +24,7 @@ from fairseq.data import indexed_dataset
 #from transformers_bk.models.bart import BartTokenizer
 from transformers.models.bart import BartTokenizer
 from transformers.models.bert import BertTokenizer
+from transformers.models.electra import ElectraTokenizer
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -254,10 +255,12 @@ def main(args):
         logger.info("[alignments] {}: parsed {} alignments".format(input_file, nseq[0]))
 
     def make_dataset(vocab, input_prefix, output_prefix, lang, num_workers=1, avoid_tokenize=False):
-        output_prefix += '.bert' if isinstance(vocab, BertTokenizer) else ''
-        input_prefix += '.bert' if isinstance(vocab, BertTokenizer) else ''
+        output_prefix += '.bert' if isinstance(vocab, BertTokenizer) and not isinstance(vocab, ElectraTokenizer) else ''
+        input_prefix += '.bert' if isinstance(vocab, BertTokenizer) and not isinstance(vocab, ElectraTokenizer) else ''
         output_prefix += '.bart' if isinstance(vocab, BartTokenizer) else ''
         input_prefix += '.bart' if isinstance(vocab, BartTokenizer) else ''
+        output_prefix += '.electra' if isinstance(vocab, ElectraTokenizer) else ''
+        input_prefix += '.electra' if isinstance(vocab, ElectraTokenizer) else ''
 
         if args.dataset_impl == "raw":
             # Copy original text file to destination folder
@@ -309,15 +312,18 @@ def main(args):
                 num_workers=args.workers,
             )
 
-    make_all(args.source_lang, src_dict)
-    if target:
-        make_all(args.target_lang, tgt_dict)
-    if args.bert_model_name:
-        berttokenizer = BertTokenizer.from_pretrained(args.bert_model_name, do_lower_case=False)
-        make_all(args.source_lang, berttokenizer)
-    if args.bart_model_name:
-        barttokenizer = BartTokenizer.from_pretrained(args.bart_model_name, do_lower_case=False)
-        make_all(args.source_lang, barttokenizer)
+    # make_all(args.source_lang, src_dict)
+    # if target:
+    #     make_all(args.target_lang, tgt_dict)
+    # if args.bert_model_name:
+    #     berttokenizer = BertTokenizer.from_pretrained(args.bert_model_name, do_lower_case=False)
+    #     make_all(args.source_lang, berttokenizer)
+    # if args.bart_model_name:
+    #     barttokenizer = BartTokenizer.from_pretrained(args.bart_model_name, do_lower_case=False)
+    #     make_all(args.source_lang, barttokenizer)
+    if args.electra_model_name:
+        electratokenizer = ElectraTokenizer.from_pretrained(args.electra_model_name)
+        make_all(args.source_lang, electratokenizer)
     if args.align_suffix:
         make_all_alignments()
 

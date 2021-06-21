@@ -20,6 +20,7 @@ class DenoisingBartDataset(FairseqDataset):
         mask_whole_words=None, item_transform_func=None,
         left_pad_source=True, left_pad_target=False,
         shuffle=False, input_feeding=True, remove_eos_from_source=False, append_eos_to_target=False,
+        mask_ratio=None, random_ratio=None, insert_ratio=None, rotate_ratio=None, permute_sentence_ratio=None
     ):
         self.src = src
         self.src_sizes = np.array(src_sizes)
@@ -39,15 +40,15 @@ class DenoisingBartDataset(FairseqDataset):
         self.encoder_mask_idx = self.src_dict.index('<mask>')
         # self.mask_idx = self.barttokenizer._convert_token_to_id('<mask>')
         self.mask_whole_word = mask_whole_words
-        self.mask_ratio = 0.3
-        self.random_ratio = 0.1
-        self.insert_ratio = 0.0
-        self.rotate_ratio = 0.5
-        self.permute_sentence_ratio = 1.0
+        self.mask_ratio = mask_ratio[0] if mask_ratio[0] is not None else 0.3
+        self.random_ratio = random_ratio[0] if random_ratio[0] is not None else 0.1
+        self.insert_ratio = insert_ratio[0] if insert_ratio[0] is not None else 0.0
+        self.rotate_ratio = rotate_ratio[0] if rotate_ratio[0] is not None else 0.5
+        self.permute_sentence_ratio = permute_sentence_ratio[0] if permute_sentence_ratio[0] is not None else 1.0
         self.bart_eos = self.barttokenizer.convert_tokens_to_ids(self.barttokenizer.eos_token)
         self.full_stop_index = self.bart_eos
         self.item_transform_func = item_transform_func
-
+        # import pdb; pdb.set_trace()
         self.mask_length = 'span-poisson'
         self.poisson_lambda = 3.5
         self.replace_length = -1
