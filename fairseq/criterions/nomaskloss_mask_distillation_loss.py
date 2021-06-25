@@ -76,7 +76,7 @@ class NomasklossMaskDistillationLossCriterion(FairseqCriterion):
         self.KL_loss = torch.nn.KLDivLoss(reduce=False, reduction="none")
         self.alpha = kd_alpha
 
-    def forward(self, model, sample, reduce=True):
+    def forward(self, model, sample, reduce=True, only_task=0):
         """Compute the loss for the given sample.
 
         Returns a tuple with three elements:
@@ -97,7 +97,13 @@ class NomasklossMaskDistillationLossCriterion(FairseqCriterion):
         loss_kd = loss_kd.sum()
         # loss_kd = self.MSE_loss(torch.mul(mask_bert_out, bert_labels), torch.mul(mask_encoder_out, bert_labels)).sum()
 
-        loss = loss + loss_kd * (1. - self.alpha)
+        # loss = loss + loss_kd * (1. - self.alpha)
+        if only_task == 1:
+            loss = loss
+        elif only_task == 2:
+            loss = loss_kd * (1. - self.alpha)
+        else:
+            loss = loss + loss_kd * (1. - self.alpha)
         # loss = loss + mask_loss + loss_kd
         sample_size = (
             sample["target"].size(0) if self.sentence_avg else sample["ntokens"]

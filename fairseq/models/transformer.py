@@ -140,6 +140,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         self.extra_data = getattr(args, 'extra_data', False)
         self.text_filling = getattr(args, 'text_filling', False)
         self.electra_pretrain_task = getattr(args, 'electra_pretrain_task', False)
+        self.electra_pretrain_task_generator = getattr(args, 'electra_pretrain_task_generator', False)
         self.electra_generator = getattr(args, 'electra_generator', False)
         self.bert_ner = getattr(args, 'bert_ner', False)
         self.bert_sst = getattr(args, 'bert_sst', False)
@@ -261,13 +262,18 @@ class TransformerModel(FairseqEncoderDecoderModel):
             model_name = args.electra_model_name
             self.electra_tokenizer = ElectraTokenizer.from_pretrained(model_name)
             self.electramasklm = ElectraForPreTraining.from_pretrained(model_name)
-            self.electra_fc1 = nn.Linear(args.encoder_embed_dim, args.encoder_embed_dim, bias=True)
-            self.electra_prd = nn.Linear(args.encoder_embed_dim, 1, bias=True)
+            # self.electra_fc1 = nn.Linear(args.encoder_embed_dim, args.encoder_embed_dim, bias=True)
+            # self.electra_prd = nn.Linear(args.encoder_embed_dim, 1, bias=True)
             if self.electra_generator is not None:
                 self.electra_generator_model = ElectraForMaskedLM.from_pretrained(self.electra_generator)
                 for para in self.electra_generator_model.parameters():
                     para.requires_grad = False
+            if self.electra_pretrain_task_generator:
+                self.electra_ger_prd = nn.Linear(args.encoder_embed_dim, len(self.electra_tokenizer.vocab))
 
+            else:
+                self.electra_fc1 = nn.Linear(args.encoder_embed_dim, args.encoder_embed_dim, bias=True)
+                self.electra_prd = nn.Linear(args.encoder_embed_dim, 1, bias=True)
         if self.bert_ner is True:
             # TODO: check whether this will work.
             model_name = args.bert_model_name[:-3] + 'ner'
@@ -407,6 +413,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         parser.add_argument('--extra-data', action='store_true', help='...')
         parser.add_argument('--electra-pretrain', action='store_true', help='...')
         parser.add_argument('--electra-pretrain-task', action='store_true', help='...')
+        parser.add_argument('--electra-pretrain-task-generator', action='store_true', help='...')
         parser.add_argument('--electra-generator', default=None, type=str)
         parser.add_argument('--denoising', action='store_true', help='...')
         parser.add_argument('--masking', action='store_true', help='...')
@@ -732,18 +739,26 @@ class TransformerModel(FairseqEncoderDecoderModel):
                 ELECTRA_electra_input = ELECTRA_electra_output
                 ELECTRA_encoder_input = ELECTRA_encoder_output
             assert ELECTRA_electra_input.shape == ELECTRA_electra_output.shape
+            electra_labels = ELECTRA_electra_input != ELECTRA_electra_output
             electra_encoder_padding_mask = ELECTRA_electra_output.eq(self.electra_tokenizer.pad_token_id)
             electra_src_lengths = (ELECTRA_encoder_input != self.encoder.dictionary.pad_token_id).sum(-1)
             electra_encoder_out = self.encoder(ELECTRA_encoder_input, electra_src_lengths)
             electra_encoder_out = electra_encoder_out['encoder_out'][-1].permute(1, 0, 2).contiguous()
-            electra_encoder_out = self.electra_fc1(electra_encoder_out)
-            electra_encoder_out = self.electra_prd(electra_encoder_out).squeeze(-1)
+            if self.electra_pretrain_task_generator:
+                electra_encoder_generator_out = self.electra_ger_prd(electra_encoder_out).softmax(dim=2).max(dim=2).indices
+                electra_encoder_out = ELECTRA_electra_input * ELECTRA_electra_input_sp_token + electra_encoder_generator_out * (~ELECTRA_electra_input_sp_token)
+                with torch.no_grad():
+                    electra_encoder_out = self.electramasklm(input_ids=electra_encoder_out, attention_mask=~electra_encoder_padding_mask, labels=electra_labels)
+                    electra_encoder_out_loss = electra_encoder_out['loss']
+                    electra_encoder_out = electra_encoder_out['logits']
+            else:
+                electra_encoder_out = self.electra_fc1(electra_encoder_out)
+                electra_encoder_out = self.electra_prd(electra_encoder_out).squeeze(-1)
 
             with torch.no_grad():
-                electra_task_out = self.electramasklm(input_ids=ELECTRA_electra_input, attention_mask=~electra_encoder_padding_mask, labels=ELECTRA_electra_output)
+                electra_task_out = self.electramasklm(input_ids=ELECTRA_electra_input, attention_mask=~electra_encoder_padding_mask, labels=electra_labels)
             electra_task_loss = electra_task_out['loss']
             electra_task_out = electra_task_out['logits']
-
 
         decoder_out = self.decoder(
             prev_output_tokens,

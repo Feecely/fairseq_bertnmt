@@ -311,8 +311,9 @@ def train(
         valid_losses, should_stop = validate_and_save(
             cfg, trainer, task, epoch_itr, valid_subsets, end_of_epoch
         )
-
         if should_stop:
+            if hasattr(task, 'urc') and task.urc is not None:
+                print(task.urc.count(torch.tensor(True).cuda())/len(task.urc))
             break
 
     # log end-of-epoch stats

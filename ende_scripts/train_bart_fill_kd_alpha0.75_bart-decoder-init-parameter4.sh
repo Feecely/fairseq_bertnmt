@@ -4,11 +4,11 @@ tgt=de
 bedropout=0.5
 ARCH=transformer_wmt_en_de
 ROOT=/apdcephfs/share_47076/elliottyan/co-work-projects/fairseq-bert
-
+N_AUTO_DEC_LAYER=1
 #### MODIFY ######
 KD_ALPHA=0.75
 DATA_SIG=wmt14_en_de-bert-or-bart
-MODEL_SIG=d512_bart_fill_kd_bart_decoder_init_parameter4_alpha_${KD_ALPHA}
+MODEL_SIG=d512_bart_fill_kd_bart_parameter4_alpha_${KD_ALPHA}
 #### MODIFY ######
 
 DATAPATH=$ROOT/data-bin/$DATA_SIG
@@ -27,7 +27,7 @@ LC_ALL=en_US.UTF-8 python $ROOT/fairseq_cli/train.py $DATAPATH \
 --fp16 --update-freq 1 --ddp-backend=no_c10d \
 --max-update 200000 --warmup-updates 4000 --warmup-init-lr '1e-07' \
 --criterion new_fill_distillation_loss \
---denoising --text-filling --use-bartinput --bart-decoder --bart-decoder-init \
+--denoising --text-filling --use-bartinput \
 --left-pad-source --mask-ratio 0.1 --random-ratio 0.1 \
  --insert-ratio 0.0 --rotate-ratio 0.5 --permute-sentence-ratio 0.0 \
 --kd-alpha $KD_ALPHA --bart-model-name $ROOT/pretrain_models/bart-base \

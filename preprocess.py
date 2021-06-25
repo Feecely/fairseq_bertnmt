@@ -312,18 +312,18 @@ def main(args):
                 num_workers=args.workers,
             )
 
-    # make_all(args.source_lang, src_dict)
-    # if target:
-    #     make_all(args.target_lang, tgt_dict)
-    # if args.bert_model_name:
-    #     berttokenizer = BertTokenizer.from_pretrained(args.bert_model_name, do_lower_case=False)
-    #     make_all(args.source_lang, berttokenizer)
-    # if args.bart_model_name:
-    #     barttokenizer = BartTokenizer.from_pretrained(args.bart_model_name, do_lower_case=False)
-    #     make_all(args.source_lang, barttokenizer)
-    if args.electra_model_name:
-        electratokenizer = ElectraTokenizer.from_pretrained(args.electra_model_name)
-        make_all(args.source_lang, electratokenizer)
+    make_all(args.source_lang, src_dict)
+    if target:
+        make_all(args.target_lang, tgt_dict)
+    if args.bert_model_name:
+        berttokenizer = BertTokenizer.from_pretrained(args.bert_model_name, do_lower_case=False)
+        make_all(args.source_lang, berttokenizer)
+    if args.bart_model_name:
+        barttokenizer = BartTokenizer.from_pretrained(args.bart_model_name, do_lower_case=False)
+        make_all(args.source_lang, barttokenizer)
+    # if args.electra_model_name:
+    #     electratokenizer = ElectraTokenizer.from_pretrained(args.electra_model_name)
+    #     make_all(args.source_lang, electratokenizer)
     if args.align_suffix:
         make_all_alignments()
 

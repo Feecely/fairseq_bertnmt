@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 src=en
-tgt=de
+tgt=fr
 bedropout=0.5
 ARCH=transformer_wmt_en_de
 ROOT=/apdcephfs/share_47076/elliottyan/co-work-projects/fairseq-bert
 
 #### MODIFY ######
-KD_ALPHA=50
-DATA_SIG=wmt14_en_de-bert-or-bart-or-electra
-MODEL_SIG=d512_electra_feature_generator_alpha_${KD_ALPHA}
+KD_ALPHA=0.75
+DATA_SIG=wmt14_en_fr-bert-or-bart-or-electra
+MODEL_SIG=d512_electra_feature_halfalpha_${KD_ALPHA}_tok-level
 #### MODIFY ######
 
 DATAPATH=$ROOT/data-bin/$DATA_SIG
@@ -26,13 +26,12 @@ LC_ALL=en_US.UTF-8 python $ROOT/fairseq_cli/train.py $DATAPATH \
 --log-interval 100 --disable-validation \
 --fp16 --update-freq 1 --ddp-backend=no_c10d \
 --max-update 200000 --warmup-updates 4000 --warmup-init-lr '1e-07' \
---criterion new_electra_task_distillation_loss \
+--criterion halfalpha_distillation_loss \
 --left-pad-source \
---use-electrainput \
---kd-alpha $KD_ALPHA --electra-pretrain --electra-pretrain-task \
+--use-electrainput --kd-level token-level \
+--kd-alpha $KD_ALPHA --origin-kd-electra --electra-pretrain \
 --bert-model-name $ROOT/pretrain_models/bert-base-cased-new \
---electra-model-name $ROOT/pretrain_models/electra-base-discriminator \
---electra-generator $ROOT/pretrain_models/electra-base-generator
+--electra-model-name $ROOT/pretrain_models/electra-base-discriminator
 
 # --use-bertinput 
 

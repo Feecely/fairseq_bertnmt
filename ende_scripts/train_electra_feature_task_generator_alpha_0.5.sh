@@ -6,9 +6,9 @@ ARCH=transformer_wmt_en_de
 ROOT=/apdcephfs/share_47076/elliottyan/co-work-projects/fairseq-bert
 
 #### MODIFY ######
-KD_ALPHA=50
+KD_ALPHA=5
 DATA_SIG=wmt14_en_de-bert-or-bart-or-electra
-MODEL_SIG=d512_electra_feature_generator_alpha_${KD_ALPHA}
+MODEL_SIG=d512_electra_feature_task_generator_alpha_${KD_ALPHA}
 #### MODIFY ######
 
 DATAPATH=$ROOT/data-bin/$DATA_SIG
@@ -16,7 +16,7 @@ SAVEDIR=$ROOT/checkpoints/$DATA_SIG/$MODEL_SIG
 mkdir -p $SAVEDIR
 
 export CUDA_VISIBLE_DEVICES=0,1,2,3
-# export CUDA_VISIBLE_DEVICES=0
+#export CUDA_VISIBLE_DEVICES=0
 
 LC_ALL=en_US.UTF-8 python $ROOT/fairseq_cli/train.py $DATAPATH \
 -a $ARCH --optimizer adam --lr 0.0007 -s $src -t $tgt \
@@ -29,7 +29,7 @@ LC_ALL=en_US.UTF-8 python $ROOT/fairseq_cli/train.py $DATAPATH \
 --criterion new_electra_task_distillation_loss \
 --left-pad-source \
 --use-electrainput \
---kd-alpha $KD_ALPHA --electra-pretrain --electra-pretrain-task \
+--kd-alpha $KD_ALPHA --electra-pretrain --electra-pretrain-task --electra-pretrain-task-generator \
 --bert-model-name $ROOT/pretrain_models/bert-base-cased-new \
 --electra-model-name $ROOT/pretrain_models/electra-base-discriminator \
 --electra-generator $ROOT/pretrain_models/electra-base-generator

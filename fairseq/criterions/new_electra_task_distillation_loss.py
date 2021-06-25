@@ -90,7 +90,7 @@ class NewElectraTaskDistillationLossCriterion(FairseqCriterion):
         self.kd_level = splits[0]
         self.kd_feature = splits[1]
         
-    def forward(self, model, sample, reduce=True):
+    def forward(self, model, sample, reduce=True, only_task=0):
         """Compute the loss for the given sample.
 
         Returns a tuple with three elements:
@@ -117,8 +117,12 @@ class NewElectraTaskDistillationLossCriterion(FairseqCriterion):
             loss_kd = loss_kd.sum()
         else:
             raise NotImplementedError
-
-        loss = loss + loss_kd * self.alpha
+        if only_task == 1:
+            loss = loss
+        elif only_task == 2:
+            loss = loss_kd * self.alpha
+        else:
+            loss = loss + loss_kd * self.alpha
 
         sample_size = (
             sample["target"].size(0) if self.sentence_avg else sample["ntokens"]
@@ -190,7 +194,7 @@ class NewElectraTaskDistillationLossCriterion(FairseqCriterion):
             "kd_loss", kd_loss_sum / ntokens / math.log(2), ntokens, round=3
         )
         metrics.log_scalar(
-            "electra_task_loss", electra_task_loss_sum / ntokens / math.log(2), ntokens, round=3
+            "electra_task_loss", electra_task_loss_sum, ntokens, round=3
         )
         metrics.log_derived(
             "ppl", lambda meters: utils.get_perplexity(meters["nll_loss"].avg)

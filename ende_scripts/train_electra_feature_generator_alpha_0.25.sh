@@ -6,7 +6,7 @@ ARCH=transformer_wmt_en_de
 ROOT=/apdcephfs/share_47076/elliottyan/co-work-projects/fairseq-bert
 
 #### MODIFY ######
-KD_ALPHA=3
+KD_ALPHA=0.25
 DATA_SIG=wmt14_en_de-bert-or-bart-or-electra
 MODEL_SIG=d512_electra_feature_generator_alpha_${KD_ALPHA}
 #### MODIFY ######
